@@ -7,8 +7,9 @@ from torch import Tensor
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 from anomalib.models.components import AnomalyModule
-from anomalib.models.fair.torch_model import ReconstructiveSubNetwork
+from anomalib.models.fair.torch_model import FairModel
 from anomalib.models.fair.loss import FairLoss, MSGMSLoss
+from anomalib.data.utils import FairAugmenter
 
 
 def mean_smoothing(amaps, kernel_size: int = 21):
@@ -29,9 +30,9 @@ class Fair(AnomalyModule):
     ) -> None:
         super(Fair, self).__init__()
 
-        self.model = ReconstructiveSubNetwork(in_channels, out_channels)
+        self.model = FairModel(in_channels, out_channels)
         self.loss = FairLoss()
-        self.augmenter = None
+        self.augmenter = FairAugmenter(anomaly_source_path)
 
     def training_step(self, batch: dict[str, str | Tensor], *args, **kwargs) -> STEP_OUTPUT:
         del args, kwargs  # These variables are not used.
@@ -53,16 +54,20 @@ class Fair(AnomalyModule):
         gray_batch, gray_grayimage = self.augmenter.augment_batch(input_image, mode='test')
 
         gray_rec = self.model(gray_grayimage)
-        rec_lab = kornia.color.rgb_to_lab(gray_rec)
-        ori_lab = kornia.color.rgb_to_lab(gray_batch)
-        colordif = (ori_lab - rec_lab) * (ori_lab - rec_lab)
-        colorresult = colordif[:, 1, :, :] + colordif[:, 2, :, :]
-        colorresult = colorresult[None, :, :, :] * 0.0003
 
-        out_map = msgms(gray_rec, gray_batch, as_loss=False) + colorresult
-        out_mask_averaged = mean_smoothing(out_map, 21)
-        out_mask_averaged = out_mask_averaged.detach().cpu().numpy()
-        prediction = out_mask_averaged[0, 0, :, :]
+        prediction = []
+        for i in range(gray_rec.shape[0]):
+            rec_lab = kornia.color.rgb_to_lab(gray_rec[i].unsqueeze(0))
+            ori_lab = kornia.color.rgb_to_lab(gray_batch[i].unsqueeze(0))
+            colordif = (ori_lab - rec_lab) * (ori_lab - rec_lab)
+            colorresult = colordif[:, 1, :, :] + colordif[:, 2, :, :]
+            colorresult = colorresult[None, :, :, :] * 0.0003
 
-        batch["anomaly_maps"] = prediction
+            out_map = msgms(gray_rec[i].unsqueeze(0), gray_batch[i].unsqueeze(0), as_loss=False) + colorresult
+            out_mask_averaged = mean_smoothing(out_map, 21)
+            pred = out_mask_averaged[0, 0, :, :]
+            prediction.append(pred)
+
+        batch_prediction = torch.stack(prediction)
+        batch["anomaly_maps"] = batch_prediction
         return batch

@@ -6,14 +6,24 @@
 
 from __future__ import annotations
 
-import torch.nn as nn
+from torch import nn
 
 
-class ReconstructiveSubNetwork(nn.Module):
+class FairModel(nn.Module):
     def __init__(self, in_channels=3, out_channels=3, base_width=128):
-        super(ReconstructiveSubNetwork, self).__init__()
+        super(FairModel, self).__init__()
         self.encoder = EncoderReconstructive(in_channels, base_width)
         self.decoder = DecoderReconstructive(base_width, out_channels=out_channels)
+        self.weights_init(self.decoder)
+        self.weights_init(self.encoder)
+
+    def weights_init(self, m):
+        classname = m.__class__.__name__
+        if classname.find('Conv') != -1:
+            m.weight.data.normal_(0.0, 0.02)
+        elif classname.find('BatchNorm') != -1:
+            m.weight.data.normal_(1.0, 0.02)
+            m.bias.data.fill_(0)
 
     def forward(self, x):
         b5, b4, b3, b2, b1 = self.encoder(x)
@@ -135,7 +145,6 @@ class DecoderReconstructive(nn.Module):
         )
 
         self.fin_out = nn.Sequential(nn.Conv2d(base_width, out_channels, kernel_size=3, padding=1))
-        # self.fin_out = nn.Conv2d(base_width, out_channels, kernel_size=3, padding=1)
 
     def forward(self, b5, b4, b3, b2, b1):
         up1 = self.up1(b5)

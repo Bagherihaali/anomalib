@@ -24,7 +24,7 @@ from torch import Tensor
 from torchvision.datasets.folder import IMG_EXTENSIONS
 
 from anomalib.data.utils.generators.perlin import random_2d_perlin
-from anomalib.models.fair.perlin import rand_perlin_2d_np
+from anomalib.data.utils.perlin import rand_perlin_2d_np
 
 
 def nextpow2(value):
@@ -60,8 +60,8 @@ def paste_patch(img, patch):
     pasteimg[patch_h_position:patch_h_position + patchh,
     patch_w_position:patch_w_position + patchw, :] = affinepatch
     mask = np.zeros((img.shape[0], img.shape[1], 1))
-    mask[patch_h_position:patch_h_position + patchh,
-    patch_w_position:patch_w_position + patchw] = 1
+    mask[patch_h_position:patch_h_position + patchh, patch_w_position:patch_w_position + patchw] = 1
+
     return pasteimg, mask
 
 
@@ -209,7 +209,8 @@ class FairAugmenter:
             self,
             anomaly_source_path: str | None = None,
     ) -> None:
-        self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
+        if anomaly_source_path is not None:
+            self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
         self.image_augmenters = [
             iaa.PiecewiseAffine(nb_rows=(4), nb_cols=(4), scale=(0.02, 0.02)),
             iaa.ShearX((-10, 10), mode='edge'),
@@ -217,6 +218,7 @@ class FairAugmenter:
             #     iaa.PiecewiseAffine(nb_rows=(2,6),nb_cols=(2,6),scale=(0.01, 0.01))
             # ),
         ]
+
         self.augmenters = [
             iaa.GammaContrast((0.5, 2.0),
                               per_channel=False
@@ -238,30 +240,33 @@ class FairAugmenter:
         self.rot = iaa.Sequential([iaa.Affine(rotate=(-90, 90))])
 
     def augment_batch(self, batch: Tensor, mode: str) -> tuple[Tensor, Tensor]:
+        device = batch.device
+        batch = batch.cpu()
         batch_size, channels, height, width = batch.shape
 
         images = []
         auggrays = []
         for i in range(batch_size):
             if mode == 'train':
-                anomaly_source_paths = random.sample(self.anomaly_source_paths, 1)[0] if len(
+                anomaly_source_path = random.sample(self.anomaly_source_paths, 1)[0] if len(
                     self.anomaly_source_paths) > 0 else None
-                image, auggray = self.transform_image(batch[i], anomaly_source_paths)
+                image, auggray = self.transform_image(batch[i], anomaly_source_path)
                 images.append(image)
-                auggrays.append(auggrays)
+                auggrays.append(auggray)
             else:
-                image, auggray = self.transform_test_image(batch[i], anomaly_source_paths)
+                image, auggray = self.transform_test_image(batch[i])
                 images.append(image)
-                auggrays.append(auggrays)
+                auggrays.append(auggray)
 
-        images = torch.stack(images).to(batch.device)
-        auggray = torch.stack(auggrays).to(batch.device)
+        images = torch.from_numpy(np.stack(images)).to(device)
+        auggray = torch.from_numpy(np.stack(auggrays)).to(device)
 
         return images, auggray
 
-    def transform_test_image(self, image, anomaly_source_path):
+    def transform_test_image(self, image):
+        image = np.array(image)
+        image = np.transpose(image, (1, 2, 0))
 
-        image = np.array(image).reshape((image.shape[0], image.shape[1], 3)).astype(np.float32) / 255.0
         imagegray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # fft
@@ -290,13 +295,14 @@ class FairAugmenter:
         return image, imagegray
 
     def transform_image(self, image, anomaly_source_path):
+        image = np.array(image)
+        image = np.transpose(image, (1, 2, 0))
 
         do_aug_orig = torch.rand(1).numpy()[0] > 0.7
         if do_aug_orig:
             pass
             # image = self.rot(image=image)
 
-        image = np.array(image).reshape((image.shape[0], image.shape[1], image.shape[2])).astype(np.float32) / 255.0
         what_anomaly = torch.rand(1).numpy()[0]
         if what_anomaly > 0.7:
             augmented_image, anomaly_mask = self.augment_cutpaste(image)
@@ -349,8 +355,9 @@ class FairAugmenter:
         image_aug = self.imageRandAugmenter()
         perlin_scale = 6
         min_perlin_scale = 0
+
         anomaly_source_img = cv2.imread(anomaly_source_path)
-        anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(self.resize_shape[1], self.resize_shape[0]))
+        anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[0], image.shape[1]))
 
         anomaly_img_augmented = aug(image=anomaly_source_img)
         image = image_aug(image=image)
@@ -358,7 +365,7 @@ class FairAugmenter:
         perlin_scalex = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
         perlin_scaley = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
 
-        perlin_noise = rand_perlin_2d_np((self.resize_shape[0], self.resize_shape[1]), (perlin_scalex, perlin_scaley))
+        perlin_noise = rand_perlin_2d_np((image.shape[0], image.shape[1]), (perlin_scalex, perlin_scaley))
         perlin_noise = self.rot(image=perlin_noise)
         threshold = 0.5
         perlin_thr = np.where(perlin_noise > threshold, np.ones_like(perlin_noise), np.zeros_like(perlin_noise))
@@ -368,13 +375,12 @@ class FairAugmenter:
 
         beta = torch.rand(1).numpy()[0] * 0.8
 
-        augmented_image = image * (1 - perlin_thr) + (1 - beta) * img_thr + beta * image * (
-            perlin_thr)
+        augmented_image = image * (1 - perlin_thr) + (1 - beta) * img_thr + beta * image * perlin_thr
 
         no_anomaly = torch.rand(1).numpy()[0]
         if no_anomaly > 0.8:
             image = image.astype(np.float32)
-            return image, np.zeros_like(perlin_thr, dtype=np.float32), np.array([0.0], dtype=np.float32)
+            return image, np.zeros_like(perlin_thr, dtype=np.float32)
         else:
             augmented_image = augmented_image.astype(np.float32)
             msk = (perlin_thr).astype(np.float32)
@@ -382,14 +388,13 @@ class FairAugmenter:
             has_anomaly = 1.0
             if np.sum(msk) == 0:
                 has_anomaly = 0.0
-            return augmented_image, msk, np.array([has_anomaly], dtype=np.float32)
+            return augmented_image, msk
 
     def augment_cutpaste(self, image):
         no_anomaly = torch.rand(1).numpy()[0]
         if no_anomaly > 0.5:
             image = image.astype(np.float32)
-            return image, np.zeros((image.shape[0], image.shape[1], 1), dtype=np.float32), np.array([0.0],
-                                                                                                    dtype=np.float32)
+            return image, np.zeros((image.shape[0], image.shape[1], 1), dtype=np.float32)
         else:
             patch = cut_patch(image)
             augmented_image, msk = paste_patch(image, patch)
@@ -398,4 +403,4 @@ class FairAugmenter:
             has_anomaly = 1.0
             if np.sum(msk) == 0:
                 has_anomaly = 0.0
-            return augmented_image, msk, np.array([has_anomaly], dtype=np.float32)
+            return augmented_image, msk
