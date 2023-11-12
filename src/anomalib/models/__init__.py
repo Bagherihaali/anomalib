@@ -12,7 +12,7 @@ from importlib import import_module
 from omegaconf import DictConfig, ListConfig
 from torch import load
 
-from anomalib.models.ai_vad import AiVad
+# from anomalib.models.ai_vad import AiVad
 from anomalib.models.cfa import Cfa
 from anomalib.models.cflow import Cflow
 from anomalib.models.components import AnomalyModule
@@ -43,7 +43,7 @@ __all__ = [
     "ReverseDistillation",
     "Rkde",
     "Stfpm",
-    "AiVad",
+    # "AiVad",
     "EfficientAD",
 ]
 
