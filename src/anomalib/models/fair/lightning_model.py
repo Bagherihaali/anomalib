@@ -25,8 +25,8 @@ class Fair(AnomalyModule):
     def __init__(
             self,
             anomaly_source_path: str | None = None,
-            in_channels: str = 3,
-            out_channels: str = 3
+            in_channels: int = 3,
+            out_channels: int = 3
     ) -> None:
         super(Fair, self).__init__()
 

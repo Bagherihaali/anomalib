@@ -15,6 +15,7 @@ from __future__ import annotations
 import glob
 import math
 import random
+from PIL import Image
 
 import cv2
 import imgaug.augmenters as iaa
@@ -24,7 +25,7 @@ from torch import Tensor
 from torchvision.datasets.folder import IMG_EXTENSIONS
 
 from anomalib.data.utils.generators.perlin import random_2d_perlin
-from anomalib.data.utils.perlin import rand_perlin_2d_np
+from anomalib.data.utils.perlin import rand_perlin_2d_np, detseg_perlin
 
 
 def nextpow2(value):
@@ -404,3 +405,55 @@ class FairAugmenter:
             if np.sum(msk) == 0:
                 has_anomaly = 0.0
             return augmented_image, msk
+
+
+class DetSegAugmenter:
+    def __init__(self,
+                 dtd_dir=None,
+                 rotate_90=False,
+                 random_rotate=0):
+        self.dtd_paths = sorted(glob.glob(dtd_dir + "/*/*.jpg"))
+        self.rotate_90 = rotate_90
+        self.random_rotate = random_rotate
+
+    def augment_batch(self, batch: Tensor) -> tuple[Tensor, Tensor]:
+        device = batch.device
+        batch = batch.cpu()
+        batch_size, channels, height, width = batch.shape
+
+        aug_images = []
+        images = []
+        masks = []
+        for image in batch:
+            dtd_index = torch.randint(0, len(self.dtd_paths), (1,)).item()
+            dtd_image = Image.open(self.dtd_paths[dtd_index]).convert("RGB")
+            dtd_image = dtd_image.resize((height, width), Image.BILINEAR)
+
+            if self.rotate_90:
+                degree = np.random.choice(np.array([0, 90, 180, 270]))
+                image = iaa.Affine(rotate=degree),
+                # image = image.rotate(
+                #     degree, fillcolor=fill_color, resample=Image.BILINEAR
+                # )
+            # random_rotate
+            if self.random_rotate > 0:
+                degree = np.random.uniform(-self.random_rotate, self.random_rotate)
+                image = iaa.Affine(rotate=degree),
+
+                # image = image.rotate(
+                #     degree, fillcolor=fill_color, resample=Image.BILINEAR
+                # )
+
+            # perlin_noise implementation
+            aug_image, aug_mask = detseg_perlin(image.permute(1, 2, 0), dtd_image, aug_prob=.6)
+            aug_image = aug_image.transpose(2, 0, 1)
+
+            images.append(image)
+            aug_images.append(aug_image)
+            masks.append(aug_mask)
+
+        images = torch.from_numpy(np.stack(images)).to(device)
+        aug_images = torch.from_numpy(np.stack(aug_images)).to(device)
+        masks = torch.from_numpy(np.stack(masks)).to(device)
+
+        return aug_images, images, masks
