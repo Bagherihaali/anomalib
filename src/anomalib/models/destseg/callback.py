@@ -53,7 +53,6 @@ class TrainingVisualizer(Callback):
         batch_size = batch["image"].shape[0]
         visualisation = batch['visualisation']
         row_num = len(batch['visualisation'].keys())
-        # fig, axs = plt.subplots(row_num, batch_size, figsize=(8, 6), gridspec_kw={'wspace': 0.1, 'hspace': 0.5})
 
         image_height, image_width = 64, 64
         margin_size = 30
@@ -76,8 +75,6 @@ class TrainingVisualizer(Callback):
                                              image_width + margin_size, 3), dtype=np.uint8) * 255
                 image_with_margin[:image_height, :image_width] = img
 
-                # final_image[i * image_height: (i + 1) * image_height, j * image_width: (j + 1) * image_width] = img
-
                 final_image[
                 margin_size + i * (image_height + margin_size):margin_size + (i + 1) * (image_height + margin_size),
                 margin_size + j * (image_width + margin_size): margin_size + (j + 1) * (
@@ -86,17 +83,4 @@ class TrainingVisualizer(Callback):
             cv2.putText(final_image, row_caption, (5 + margin_size, (i + 1) * (image_height + margin_size) - 10 + margin_size),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-            # ax = axs[i, j]
-            # ax.imshow(img.detach().cpu().numpy().transpose(1, 2, 0) * 255)
-            # ax.axis('off')
-
-            # if j == 0:
-            #     ax.text(-0.1, 0.5, f'{key}', va='center', ha='right', rotation='vertical',
-            #             transform=ax.transAxes, fontsize='x-small')
-        # fig.canvas.draw()
-        # img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-        # img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        # plt.close()
-
-        # return img
         return final_image
