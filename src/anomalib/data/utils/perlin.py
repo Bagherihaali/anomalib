@@ -129,9 +129,9 @@ def detseg_perlin(image, dtd_image, aug_prob=1.0):
     )
 
     img_thr = dtd_image * perlin_thr / 255.0
-    image = image / 255.0
+    # image = image / 255.0
 
-    beta = torch.rand(1).numpy()[0] * 0.8
+    beta = torch.rand(1).numpy()[0] * 0.9
     image_aug = (
             image * (1 - perlin_thr) + (1 - beta) * img_thr + beta * image * (perlin_thr)
     )

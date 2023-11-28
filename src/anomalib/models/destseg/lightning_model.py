@@ -1,11 +1,10 @@
 import torch
+import torch.nn.functional as F
 
 from typing import Any
-
 from torch import Tensor
 from torch.optim import SGD, AdamW
 from pytorch_lightning.utilities.types import STEP_OUTPUT
-import torch.nn.functional as F
 
 from anomalib.models.components import AnomalyModule
 from anomalib.models.destseg.torch_model import DeSTSegModel
@@ -38,30 +37,30 @@ class DestSeg(AnomalyModule):
         self.automatic_optimization = False
 
     def configure_optimizers(self) -> Any:
-        seg_optimizer = SGD(
+        step_count = int(len(self.trainer.datamodule.train_data) / self.trainer.datamodule.train_batch_size)
+        seg_optimizer = AdamW(
             [
                 {"params": self.model.segmentation_net.res.parameters(), "lr": self.lr_res},
                 {"params": self.model.segmentation_net.head.parameters(), "lr": self.lr_seghead},
             ],
             lr=0.001,
-            momentum=0.9,
+            # momentum=0.9,
             weight_decay=1e-3,
-            nesterov=False,
+            # nesterov=True,
         )
-        de_st_optimizer = SGD(
+        de_st_optimizer = AdamW(
             [
                 {"params": self.model.student_net.parameters(), "lr": self.lr_de_st},
             ],
             lr=0.4,
-            momentum=0.9,
+            # momentum=0.9,
             weight_decay=1e-3,
-            nesterov=False,
+            # nesterov=False,
         )
 
         return [de_st_optimizer, seg_optimizer]
 
     def training_step(self, batch: dict[str, str | Tensor]) -> STEP_OUTPUT:
-        # del args, kwargs  # These variables are not used.
 
         de_st_optimizer, seg_optimizer = self.optimizers()
         de_st_optimizer.zero_grad()
@@ -98,7 +97,6 @@ class DestSeg(AnomalyModule):
             loss = cosine_loss_val
             self.manual_backward(loss)
             de_st_optimizer.step()
-
 
         else:
             loss = focal_loss_val + l1_loss_val
