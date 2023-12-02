@@ -26,6 +26,7 @@ from .post_processing_configuration import PostProcessingConfigurationCallback
 from .tiler_configuration import TilerConfigurationCallback
 from .timer import TimerCallback
 from .visualizer import ImageVisualizerCallback, MetricVisualizerCallback
+from .mlflow import MLFlowModelCheckpoint
 
 __all__ = [
     "CdfNormalizationCallback",
@@ -38,6 +39,7 @@ __all__ = [
     "PostProcessingConfigurationCallback",
     "TilerConfigurationCallback",
     "TimerCallback",
+    "MLFlowModelCheckpoint"
 ]
 
 

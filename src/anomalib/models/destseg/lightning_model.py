@@ -20,7 +20,7 @@ class DestSeg(AnomalyModule):
             lr_seghead=0.01,
             lr_de_st=0.4,
             de_st_epochs=10,
-            gamma=4
+            gamma=4,
 
     ) -> None:
         super().__init__()
@@ -35,30 +35,6 @@ class DestSeg(AnomalyModule):
         self.augmenter = DetSegAugmenter(anomaly_source_path)
 
         self.automatic_optimization = False
-
-    def configure_optimizers(self) -> Any:
-        step_count = int(len(self.trainer.datamodule.train_data) / self.trainer.datamodule.train_batch_size)
-        seg_optimizer = AdamW(
-            [
-                {"params": self.model.segmentation_net.res.parameters(), "lr": self.lr_res},
-                {"params": self.model.segmentation_net.head.parameters(), "lr": self.lr_seghead},
-            ],
-            lr=0.001,
-            # momentum=0.9,
-            weight_decay=1e-3,
-            # nesterov=True,
-        )
-        de_st_optimizer = AdamW(
-            [
-                {"params": self.model.student_net.parameters(), "lr": self.lr_de_st},
-            ],
-            lr=0.4,
-            # momentum=0.9,
-            weight_decay=1e-3,
-            # nesterov=False,
-        )
-
-        return [de_st_optimizer, seg_optimizer]
 
     def training_step(self, batch: dict[str, str | Tensor]) -> STEP_OUTPUT:
 

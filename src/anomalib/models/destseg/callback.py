@@ -1,6 +1,5 @@
 import cv2
 import pytorch_lightning as pl
-import matplotlib.pyplot as plt
 import numpy as np
 
 from pathlib import Path
