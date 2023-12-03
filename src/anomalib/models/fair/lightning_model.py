@@ -43,7 +43,14 @@ class Fair(AnomalyModule):
         # Compute loss
         loss = self.loss(gray_rec, gray_batch)
 
-        self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True, on_step=False)
+        batch['visualisation'] = {
+            "mask": batch["mask"],
+            'gray_batch': gray_batch,
+            'gray_grayimage': gray_grayimage,
+            'gray_rec': gray_rec,
+        }
+
         return {"loss": loss}
 
     def validation_step(self, batch: dict[str, str | Tensor], *args, **kwargs) -> STEP_OUTPUT:
@@ -54,7 +61,7 @@ class Fair(AnomalyModule):
         gray_batch, gray_grayimage = self.augmenter.augment_batch(input_image, mode='test')
 
         gray_rec = self.model(gray_grayimage)
-
+        loss = self.loss(gray_rec, gray_batch)
         prediction = []
         for i in range(gray_rec.shape[0]):
             rec_lab = kornia.color.rgb_to_lab(gray_rec[i].unsqueeze(0))
@@ -69,5 +76,14 @@ class Fair(AnomalyModule):
             prediction.append(pred)
 
         batch_prediction = torch.stack(prediction)
+
+        self.log("val_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True, on_step=False)
         batch["anomaly_maps"] = batch_prediction
+        batch['visualisation'] = {
+            "mask": batch["mask"],
+            'gray_batch': gray_batch,
+            'gray_grayimage': gray_grayimage,
+            'gray_rec': gray_rec,
+            'anomaly_maps': batch_prediction
+        }
         return batch
