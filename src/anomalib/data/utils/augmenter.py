@@ -231,7 +231,6 @@ class FairAugmenter:
             iaa.Solarize(0.5, threshold=(32, 128)),
             iaa.Posterize(),
             iaa.Invert(),
-            iaa.Affine(scale=(0.5, 1)),
             iaa.pillike.Autocontrast(),
             iaa.pillike.Equalize(),
             iaa.Affine(rotate=(-45, 45)),
@@ -379,7 +378,7 @@ class FairAugmenter:
         augmented_image = image * (1 - perlin_thr) + (1 - beta) * img_thr + beta * image * perlin_thr
 
         no_anomaly = torch.rand(1).numpy()[0]
-        if no_anomaly > 0.8:
+        if no_anomaly > 0.001:
             image = image.astype(np.float32)
             return image, np.zeros_like(perlin_thr, dtype=np.float32)
         else:
