@@ -114,6 +114,10 @@ class Patchcore(AnomalyModule):
         batch["anomaly_maps"] = output["anomaly_map"]
         batch["pred_scores"] = output["pred_score"]
 
+        batch['visualization'] = {
+            'input_image': batch["image"],
+            'anomaly_maps': batch["anomaly_maps"]
+        }
         return batch
 
 
