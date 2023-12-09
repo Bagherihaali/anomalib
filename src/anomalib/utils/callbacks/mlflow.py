@@ -2,7 +2,7 @@ import mlflow
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 
 
-class MLFlowModelCheckpoint(Callback):
+class MLFlowModelCheckpoint(ModelCheckpoint):
     def __init__(self,
                  dirpath: str,
                  requirements_path: str,
@@ -15,7 +15,7 @@ class MLFlowModelCheckpoint(Callback):
         self.last_saved_model = ''
         self.best_score = None
 
-    def on_validation_end(self, trainer, pl_module):
+    def on_train_epoch_end(self, trainer, pl_module):
         for callback in trainer.callbacks:
             if isinstance(callback, ModelCheckpoint):
                 # there is two model checkpoint callbacks
