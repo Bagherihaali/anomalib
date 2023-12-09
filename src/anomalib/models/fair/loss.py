@@ -107,11 +107,14 @@ class FairLoss(nn.Module):
         self.l2_loss = MSELoss()
         self.ssim_los = SSIM()
 
-    def forward(self, input_image: Tensor, reconstruction: Tensor):
-        l2_loss_val = self.l2_loss(input_image, reconstruction)
-        ssim_los_val = self.ssim_los(input_image, reconstruction)
+        self.l2_loss_val = 0
+        self.ssim_los_val = 0
 
-        return l2_loss_val + ssim_los_val
+    def forward(self, input_image: Tensor, reconstruction: Tensor):
+        self.l2_loss_val = self.l2_loss(input_image, reconstruction)
+        self.ssim_los_val = self.ssim_los(input_image, reconstruction)
+
+        return self.l2_loss_val + self.ssim_los_val
 
 
 class MSGMSLoss(nn.Module):
