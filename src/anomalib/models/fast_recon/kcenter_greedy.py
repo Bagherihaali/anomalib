@@ -19,6 +19,7 @@ import abc
 import numpy as np
 
 from sklearn.metrics import pairwise_distances
+from tqdm import tqdm
 
 
 class SamplingMethod(object):
@@ -123,17 +124,17 @@ class KCenterGreedy(SamplingMethod):
         try:
             # Assumes that the transform function takes in original data and not
             # flattened data.
-            print('Getting transformed features...')
+            # print('Getting transformed features...')
             self.features = model.transform(self.X)
-            print('Calculating distances...')
+            # print('Calculating distances...')
             self.update_distances(already_selected, only_new=False, reset_dist=True)
         except:
-            print('Using flat_X as features.')
+            # print('Using flat_X as features.')
             self.update_distances(already_selected, only_new=True, reset_dist=False)
 
         new_batch = []
 
-        for i_j in range(N):
+        for i_j in tqdm(range(N), position=0, leave=True):
             if self.already_selected is None:
                 # Initialize centers with a randomly selected datapoint
                 ind = np.random.choice(np.arange(self.n_obs))

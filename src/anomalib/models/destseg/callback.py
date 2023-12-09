@@ -26,11 +26,7 @@ class TrainingVisualizer(Callback):
             *args, **kwargs
     ) -> None:
         if batch_idx == 0:
-            img = TrainingVisualizer.batch_visualize(batch)
-
-            save_path = self.image_save_path / 'validation'
-            save_path.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(save_path / f'{trainer.current_epoch}.png'), img)
+            self.batch_visualize(batch, split='validation', trainer=trainer)
 
     def on_train_batch_end(
             self,
@@ -41,19 +37,17 @@ class TrainingVisualizer(Callback):
             batch_idx: int,
     ) -> None:
         if batch_idx == 0:
-            img = TrainingVisualizer.batch_visualize(batch)
+            self.batch_visualize(batch, split='train', trainer=trainer)
 
-            save_path = self.image_save_path / 'train'
-            save_path.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(str(save_path / f'{trainer.current_epoch}.png'), img)
+    def batch_visualize(self, batch, split='train', trainer=None):
+        if not batch.get('visualization', False):
+            return
 
-    @staticmethod
-    def batch_visualize(batch):
         batch_size = batch["image"].shape[0]
-        visualisation = batch['visualisation']
-        row_num = len(batch['visualisation'].keys())
+        visualisation = batch['visualization']
+        row_num = len(batch['visualization'].keys())
 
-        image_height, image_width = 64, 64
+        image_height, image_width = 128, 128
         margin_size = 30
         final_image = np.ones((margin_size + row_num * (image_height + margin_size),
                                margin_size + batch_size * (image_width + margin_size), 3), dtype=np.uint8) * 255
@@ -82,4 +76,6 @@ class TrainingVisualizer(Callback):
             cv2.putText(final_image, row_caption, (5 + margin_size, (i + 1) * (image_height + margin_size) - 10 + margin_size),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-        return final_image
+        save_path = self.image_save_path / split
+        save_path.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(save_path / f'{trainer.current_epoch}.png'), final_image)

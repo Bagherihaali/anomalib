@@ -84,7 +84,7 @@ class DestSeg(AnomalyModule):
         self.log("l1_loss", l1_loss_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
 
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
-        batch['visualisation'] = {
+        batch['visualization'] = {
             "mask": mask,
             'output_segmentation': output_segmentation,
             'output_de_st': output_de_st,
@@ -116,7 +116,7 @@ class DestSeg(AnomalyModule):
         l1_loss_val = l1_loss(output_segmentation, mask)
 
         batch["anomaly_maps"] = output_segmentation
-        batch['visualisation'] = {
+        batch['visualization'] = {
             "mask": mask,
             'output_segmentation': output_segmentation,
             'output_de_st': output_de_st,

@@ -73,7 +73,8 @@ class FastRecon(AnomalyModule):
                  input_size=224,
                  load_size=224,
                  coreset_sampling_ratio=0.01,
-                 lambda_value=2):
+                 lambda_value=2
+                 ):
         super(FastRecon, self).__init__()
 
         self.input_size = (input_size, input_size)
@@ -84,14 +85,11 @@ class FastRecon(AnomalyModule):
         self.model = FastReconModel(input_size=self.input_size)
         self.model.lambda_value = lambda_value
 
-
     @staticmethod
     def configure_optimizers() -> None:
         return None
 
-
     def training_step(self, batch, batch_idx):
-
         self.model.feature_extractor.eval()
         features = self.model(batch["image"])
 
@@ -100,7 +98,6 @@ class FastRecon(AnomalyModule):
             m = torch.nn.AvgPool2d(3, 1, 1)
             embeddings.append(m(feature))
         self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1]).cpu())
-
 
     def on_validation_start(self):
         embedding_temp = torch.stack(self.embedding_temp)
