@@ -70,14 +70,13 @@ def save_anomaly_map(anomaly_map, input_img, file_name):
 
 class FastRecon(AnomalyModule):
     def __init__(self,
-                 input_size=224,
-                 load_size=224,
+                 input_size: tuple[int, int] = (256, 256),
                  coreset_sampling_ratio=0.01,
                  lambda_value=2
                  ):
         super(FastRecon, self).__init__()
 
-        self.input_size = (input_size, input_size)
+        self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []

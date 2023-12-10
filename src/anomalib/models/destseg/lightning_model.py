@@ -15,7 +15,7 @@ from anomalib.data.utils.augmenter import DetSegAugmenter
 class DestSeg(AnomalyModule):
     def __init__(
             self,
-            anomaly_source_path,
+            anomaly_source_path='../datasets/dtd/images/',
             lr_res=0.1,
             lr_seghead=0.01,
             lr_de_st=0.4,
