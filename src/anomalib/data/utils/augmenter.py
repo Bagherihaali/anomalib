@@ -36,9 +36,9 @@ def nextpow2(value):
 def cut_patch(mb_img):  # for numpy
     h, w, c = mb_img.shape
     top = random.randrange(0, round(h))
-    bottom = top + random.randrange(round(h * 0.8), round(h * 0.9))
+    bottom = top + random.randrange(round(h * 0.3), round(h * 0.5))
     left = random.randrange(0, round(w))
-    right = left + random.randrange(round(h * 0.8), round(h * 0.9))
+    right = left + random.randrange(round(h * 0.3), round(h * 0.5))
     if (bottom - top) % 2 == 1:
         bottom -= 1
     if (right - left) % 2 == 1:
@@ -214,10 +214,10 @@ class FairAugmenter:
             self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
         self.image_augmenters = [
             iaa.PiecewiseAffine(nb_rows=(4), nb_cols=(4), scale=(0.02, 0.02)),
-            iaa.ShearX((-10, 10), mode='edge'),
-            # iaa.WithPolarWarping(
-            #     iaa.PiecewiseAffine(nb_rows=(2,6),nb_cols=(2,6),scale=(0.01, 0.01))
-            # ),
+            iaa.ShearX((-15, 15), mode='edge'),
+            iaa.WithPolarWarping(
+                iaa.PiecewiseAffine(nb_rows=(2, 6), nb_cols=(2, 6), scale=(0.02, 0.02))
+            ),
         ]
 
         self.augmenters = [
@@ -237,7 +237,7 @@ class FairAugmenter:
             iaa.Affine(scale=(0.2, 0.7)),
         ]
 
-        self.rot = iaa.Sequential([iaa.Affine(rotate=(-90, 90))])
+        self.rot = iaa.Sequential([iaa.Affine(rotate=(-15, 15))])
 
     def augment_batch(self, batch: Tensor, mode: str) -> tuple[Tensor, Tensor]:
         device = batch.device
@@ -298,10 +298,9 @@ class FairAugmenter:
         image = np.array(image)
         image = np.transpose(image, (1, 2, 0))
 
-        do_aug_orig = torch.rand(1).numpy()[0] > 0.7
+        do_aug_orig = torch.rand(1).numpy()[0] > 0.8
         if do_aug_orig:
-            pass
-            # image = self.rot(image=image)
+            image = self.rot(image=image)
 
         what_anomaly = torch.rand(1).numpy()[0]
         if what_anomaly > 0.7:
