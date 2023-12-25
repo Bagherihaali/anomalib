@@ -10,7 +10,7 @@ from torch import nn
 
 
 class FairModel(nn.Module):
-    def __init__(self, in_channels=3, out_channels=3, base_width=128):
+    def __init__(self, in_channels=1, out_channels=1, base_width=128):
         super(FairModel, self).__init__()
         self.encoder = EncoderReconstructive(in_channels, base_width)
         self.decoder = DecoderReconstructive(base_width, out_channels=out_channels)
@@ -18,12 +18,13 @@ class FairModel(nn.Module):
         self.weights_init(self.encoder)
 
     def weights_init(self, m):
-        classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
-            m.weight.data.normal_(0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
-            m.weight.data.normal_(1.0, 0.02)
-            m.bias.data.fill_(0)
+        for module in m.modules():
+            classname = module.__class__.__name__
+            if classname.find('Conv') != -1:
+                module.weight.data.normal_(0.0, 0.02)
+            elif classname.find('BatchNorm') != -1:
+                module.weight.data.normal_(1.0, 0.02)
+                module.bias.data.fill_(0)
 
     def forward(self, x):
         b5, b4, b3, b2, b1 = self.encoder(x)
