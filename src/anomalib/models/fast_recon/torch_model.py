@@ -25,20 +25,38 @@ def embedding_concat(x, y):
 
 
 class FastReconModel(DynamicBufferModule, nn.Module):
-    def __init__(self, input_size: tuple[int, int]):
+    def __init__(
+            self,
+            input_size: tuple[int, int],
+            layers: tuple[str, str],
+            backbone: str = 'wide_resnet50',
+            lambda_value: int = 2
+    ):
         super().__init__()
         self.input_size = input_size
-        self.feature_extractor = torch.hub.load('pytorch/vision:v0.9.0', 'wide_resnet50_2',
-                                                weights=Wide_ResNet50_2_Weights.DEFAULT)
+        self.layers = layers
+        self.backbone = backbone
+        self.lambda_value = lambda_value
 
-        self.lambda_value = 2
+        if self.backbone == 'wide_resnet50':
+            self.feature_extractor = torch.hub.load('pytorch/vision:v0.9.0', 'wide_resnet50_2',
+                                                    weights=Wide_ResNet50_2_Weights.DEFAULT)
+        elif self.backbone == 'unet':
+            self.feature_extractor = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
+                                                    in_channels=3, out_channels=1, init_features=32, pretrained=True)
+
         self.features = []
 
         def hook_t(module, input, output):
             self.features.append(output)
 
-        self.feature_extractor.layer2[-1].register_forward_hook(hook_t)
-        self.feature_extractor.layer3[-1].register_forward_hook(hook_t)
+        for layer_name in self.layers:
+            layer = getattr(self.feature_extractor, layer_name, None)
+            if layer is not None:
+                layer[-1].register_forward_hook(hook_t)
+
+        # self.feature_extractor.encoder2[-1].register_forward_hook(hook_t)
+        # self.feature_extractor.encoder3[-1].register_forward_hook(hook_t)
 
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
@@ -86,7 +104,8 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         # form heatmap
         score_patches = torch.t(score_patches_temp)
-        anomaly_map = score_patches.reshape((int(self.input_size[0] / 8), int(self.input_size[1] / 8)))
+        # anomaly_map = score_patches.reshape((int(self.input_size[0] / 8), int(self.input_size[1] / 8)))
+        anomaly_map = score_patches.reshape((embedding_.shape[-1], embedding_.shape[-1]))
 
         # max value
         anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(anomaly_map.unsqueeze(0).unsqueeze(0))

@@ -70,9 +70,11 @@ def save_anomaly_map(anomaly_map, input_img, file_name):
 
 class FastRecon(AnomalyModule):
     def __init__(self,
+                 layers: tuple[str, str] = ('layer1', 'layer2'),
                  input_size: tuple[int, int] = (256, 256),
-                 coreset_sampling_ratio=0.01,
-                 lambda_value=2
+                 coreset_sampling_ratio: int = 0.01,
+                 lambda_value: int = 2,
+                 backbone: str = 'wide_resnet50'
                  ):
         super(FastRecon, self).__init__()
 
@@ -81,8 +83,7 @@ class FastRecon(AnomalyModule):
 
         self.embedding_temp = []
 
-        self.model = FastReconModel(input_size=self.input_size)
-        self.model.lambda_value = lambda_value
+        self.model = FastReconModel(self.input_size, layers, backbone, lambda_value)
 
     @staticmethod
     def configure_optimizers() -> None:
@@ -116,6 +117,9 @@ class FastRecon(AnomalyModule):
         self.model.mu = torch.mean(embedding_mu, 0)
 
     def validation_step(self, batch, *args, **kwargs):  # Nearest Neighbour Search
-        batch["anomaly_maps"] = self.model(batch['image'])
-
+        anomaly_maps = self.model(batch['image'])
+        batch["anomaly_maps"] = anomaly_maps
+        batch['visualization'] = {
+            'anomaly_maps': anomaly_maps
+        }
         return batch
