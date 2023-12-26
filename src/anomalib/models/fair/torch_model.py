@@ -10,7 +10,7 @@ from torch import nn
 
 
 class FairModel(nn.Module):
-    def __init__(self, in_channels=1, out_channels=1, base_width=128):
+    def __init__(self, in_channels=3, out_channels=3, base_width=128):
         super(FairModel, self).__init__()
         self.encoder = EncoderReconstructive(in_channels, base_width)
         self.decoder = DecoderReconstructive(base_width, out_channels=out_channels)

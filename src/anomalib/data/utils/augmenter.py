@@ -17,11 +17,14 @@ import math
 import random
 from PIL import Image
 
+import albumentations as alb
 import cv2
 import imgaug.augmenters as iaa
 import numpy as np
 import torch
 from torch import Tensor
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 from torchvision.datasets.folder import IMG_EXTENSIONS
 
 from anomalib.data.utils.generators.perlin import random_2d_perlin
@@ -34,36 +37,118 @@ def nextpow2(value):
 
 
 def cut_patch(mb_img):  # for numpy
-    h, w, c = mb_img.shape
-    top = random.randrange(0, round(h))
-    bottom = top + random.randrange(round(h * 0.3), round(h * 0.5))
-    left = random.randrange(0, round(w))
-    right = left + random.randrange(round(h * 0.3), round(h * 0.5))
-    if (bottom - top) % 2 == 1:
-        bottom -= 1
-    if (right - left) % 2 == 1:
-        right -= 1
-    return mb_img[top:bottom, left:right, :]
+    c, h, w = mb_img.shape
+    top = random.randint(0, round(h))
+    bottom = top + random.randint(round(h * 0.3), round(h * 0.5))
+    left = random.randint(0, round(w))
+    right = left + random.randint(round(w * 0.3), round(w * 0.5))
+
+    bottom = bottom % h
+    right = right % w
+
+    if top > bottom:
+        top, bottom = bottom, top
+    if left > right:
+        left, right = right, left
+
+    # Ensure even dimensions
+    bottom = bottom if (bottom - top) % 2 == 0 else bottom - 1
+    right = right if (right - left) % 2 == 0 else right - 1
+
+    return mb_img[:, top:bottom, left:right]
+
+    # h, w, c = mb_img.shape
+    # top = random.randrange(0, round(h))
+    # bottom = top + random.randrange(round(h * 0.3), round(h * 0.5))
+    # left = random.randrange(0, round(w))
+    # right = left + random.randrange(round(h * 0.3), round(h * 0.5))
+    # if (bottom - top) % 2 == 1:
+    #     bottom -= 1
+    # if (right - left) % 2 == 1:
+    #     right -= 1
+    # return mb_img[top:bottom, left:right, :]
 
 
 def paste_patch(img, patch):
-    imgh, imgw, imgc = img.shape
-    patchh, patchw, patchc = patch.shape
-    angle = random.randrange(-2 * round(math.pi), 2 * round(math.pi))
-    # scale = random.randrange(0, 1)
-    scale = 1
-    affinematrix = np.float32(
-        [[scale * math.cos(angle), scale * -math.sin(angle), 0], [scale * math.sin(angle), scale * math.cos(angle), 0]])
-    affinepatch = cv2.warpAffine(patch, affinematrix, (patchw, patchh))
-    patch_h_position = random.randrange(1, round(imgh) - round(patchh) - 1)
-    patch_w_position = random.randrange(1, round(imgw) - round(patchw) - 1)
-    pasteimg = np.copy(img)
-    pasteimg[patch_h_position:patch_h_position + patchh,
-    patch_w_position:patch_w_position + patchw, :] = affinepatch
-    mask = np.zeros((img.shape[0], img.shape[1], 1))
-    mask[patch_h_position:patch_h_position + patchh, patch_w_position:patch_w_position + patchw] = 1
+    imgc, imgh, imgw = img.shape
+    patchc, patchh, patchw = patch.shape
 
-    return pasteimg, mask
+    angle = (torch.mul(torch.rand(1), 4 * math.pi) - 2 * math.pi).item()
+    scale = 1  # You can change this if needed
+    affinematrix = torch.tensor([
+        [scale * math.cos(angle), -scale * math.sin(angle), 0],
+        [scale * math.sin(angle), scale * math.cos(angle), 0]
+    ], dtype=torch.float32)
+
+    affinepatch = F.affine_grid(affinematrix.view(1, 2, 3), torch.Size((1, patchc, patchh, patchw)))
+    affinepatch = F.grid_sample(patch.unsqueeze(0), affinepatch)
+    affinepatch = affinepatch.squeeze()
+
+    patch_h_position = random.randint(1, round(imgh) - round(patchh) - 1)
+    patch_w_position = random.randint(1, round(imgw) - round(patchw) - 1)
+
+    pasteimg = img.clone()
+    pasteimg[:, patch_h_position:patch_h_position + patchh, patch_w_position:patch_w_position + patchw] = affinepatch
+
+    return pasteimg
+
+    # imgh, imgw, imgc = img.shape
+    # patchh, patchw, patchc = patch.shape
+    # angle = random.randrange(-2 * round(math.pi), 2 * round(math.pi))
+    # # scale = random.randrange(0, 1)
+    # scale = 1
+    # affinematrix = np.float32(
+    #     [[scale * math.cos(angle), scale * -math.sin(angle), 0], [scale * math.sin(angle), scale * math.cos(angle), 0]])
+    # affinepatch = cv2.warpAffine(patch, affinematrix, (patchw, patchh))
+    # patch_h_position = random.randrange(1, round(imgh) - round(patchh) - 1)
+    # patch_w_position = random.randrange(1, round(imgw) - round(patchw) - 1)
+    # pasteimg = np.copy(img)
+    # pasteimg[patch_h_position:patch_h_position + patchh,
+    # patch_w_position:patch_w_position + patchw, :] = affinepatch
+    # mask = np.zeros((img.shape[0], img.shape[1], 1))
+    # mask[patch_h_position:patch_h_position + patchh, patch_w_position:patch_w_position + patchw] = 1
+    #
+    # return pasteimg, mask
+
+
+def rgb_to_grayscale(image_tensor):
+    # Assuming image_tensor has shape (C, H, W) where C is the number of channels
+
+    # Apply the weighted sum to convert to grayscale
+    grayscale_tensor = 0.299 * image_tensor[0, :, :] + 0.587 * image_tensor[1, :, :] + 0.114 * image_tensor[2, :, :]
+
+    # Add a singleton dimension to represent the channel
+    grayscale_tensor = grayscale_tensor.unsqueeze(0)
+
+    return grayscale_tensor
+
+
+def to_fair(auggray):
+    auggray = auggray.squeeze()
+
+    # FFT
+    f = torch.fft.fft2(auggray)
+    fshift = torch.fft.fftshift(f)
+
+    # BHPF
+    rows, cols = auggray.shape
+    crow, ccol = rows // 2, cols // 2
+    d = 30  # cutoff frequency
+    n = 2  # BHPF order
+    epsilon = 1e-6  # avoid dividing zero
+    Y, X = torch.meshgrid(torch.arange(rows), torch.arange(cols))
+    dist = torch.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
+    mask = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
+    fshift_filtered = fshift * mask
+
+    # IFFT
+    f_ishift = torch.fft.ifftshift(fshift_filtered)
+    image_filtered = torch.fft.ifft2(f_ishift)
+    auggray = torch.real(image_filtered).float()
+
+    auggray = auggray.unsqueeze(0)
+
+    return auggray
 
 
 class Augmenter:
@@ -212,32 +297,55 @@ class FairAugmenter:
     ) -> None:
         if anomaly_source_path is not None:
             self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
+        # self.image_augmenters = [
+        #     iaa.PiecewiseAffine(nb_rows=(4), nb_cols=(4), scale=(0.02, 0.02)),
+        #     iaa.ShearX((-15, 15), mode='edge'),
+        #     iaa.WithPolarWarping(
+        #         iaa.PiecewiseAffine(nb_rows=(2, 6), nb_cols=(2, 6), scale=(0.02, 0.02))
+        #     ),
+        # ]
+
         self.image_augmenters = [
-            iaa.PiecewiseAffine(nb_rows=(4), nb_cols=(4), scale=(0.02, 0.02)),
-            iaa.ShearX((-15, 15), mode='edge'),
-            iaa.WithPolarWarping(
-                iaa.PiecewiseAffine(nb_rows=(2, 6), nb_cols=(2, 6), scale=(0.02, 0.02))
-            ),
+            alb.PiecewiseAffine(scale=(0.02, 0.02), nb_rows=4, nb_cols=4, p=1.0),
+            alb.IAAAffine(shear=(-15, 15), mode='edge', p=1.0),
+            alb.ElasticTransform(alpha=100, sigma=10, alpha_affine=1, p=1,always_apply=True),
+            alb.OpticalDistortion(distort_limit=.15, shift_limit=0.05, p=1, always_apply=True)
         ]
+
+        # self.augmenters = [
+        #     iaa.GammaContrast((0.5, 2.0),
+        #                       per_channel=False
+        #                       ),
+        #     iaa.PiecewiseAffine(nb_rows=4, nb_cols=4, scale=(0.02, 0.02)),
+        #     iaa.MultiplyAndAddToBrightness(mul=(0.8, 1.2), add=(-30, 30)),
+        #     iaa.pillike.EnhanceSharpness(),
+        #     iaa.AddToHueAndSaturation((-50, 50), per_channel=True),
+        #     iaa.Solarize(0.5, threshold=(32, 128)),
+        #     iaa.Posterize(),
+        #     iaa.Invert(),
+        #     iaa.pillike.Autocontrast(),
+        #     iaa.pillike.Equalize(),
+        #     iaa.Affine(rotate=(-45, 45)),
+        #     iaa.Affine(scale=(0.2, 0.7)),
+        # ]
 
         self.augmenters = [
-            iaa.GammaContrast((0.5, 2.0),
-                              per_channel=False
-                              ),
-            iaa.PiecewiseAffine(nb_rows=4, nb_cols=4, scale=(0.02, 0.02)),
-            iaa.MultiplyAndAddToBrightness(mul=(0.8, 1.2), add=(-30, 30)),
-            iaa.pillike.EnhanceSharpness(),
-            iaa.AddToHueAndSaturation((-50, 50), per_channel=True),
-            iaa.Solarize(0.5, threshold=(32, 128)),
-            iaa.Posterize(),
-            iaa.Invert(),
-            iaa.pillike.Autocontrast(),
-            iaa.pillike.Equalize(),
-            iaa.Affine(rotate=(-45, 45)),
-            iaa.Affine(scale=(0.2, 0.7)),
+            alb.RandomGamma(gamma_limit=(0.5, 2.0), p=1.0),
+            alb.PiecewiseAffine(scale=(0.02, 0.02), nb_rows=4, nb_cols=4, p=1.0),
+            alb.RandomBrightnessContrast(brightness_limit=(-30, 30), contrast_limit=(0.8, 1.2), p=1.0),
+            alb.Sharpen(always_apply=True, p=1.0),
+            alb.HueSaturationValue(hue_shift_limit=(-50, 50), sat_shift_limit=(-50, 50), val_shift_limit=(-50, 50),
+                                   p=1.0),
+            alb.Solarize(threshold=(32, 128), p=0.5),
+            alb.Posterize(always_apply=True, p=1.0),
+            alb.InvertImg(always_apply=True, p=1.0),
+            alb.RandomContrast(always_apply=True, p=1.0),
+            alb.Equalize(always_apply=True, p=1.0),
+            alb.Affine(rotate=(-45, 45), interpolation=3, always_apply=True, p=1.0),
+            alb.Affine(scale=(0.2, 0.7), interpolation=3, always_apply=True, p=1.0),
         ]
-
-        self.rot = iaa.Sequential([iaa.Affine(rotate=(-15, 15))])
+        # self.rot = iaa.Sequential([iaa.Affine(rotate=(-15, 15))])
+        self.rot = alb.Affine(rotate=(-1, 1), interpolation=3, always_apply=True, p=1.0)
 
     def augment_batch(self, batch: Tensor, mode: str) -> tuple[Tensor, Tensor]:
         device = batch.device
@@ -264,145 +372,190 @@ class FairAugmenter:
         return images, auggray
 
     def transform_test_image(self, image):
-        image = np.array(image)
-        image = np.transpose(image, (1, 2, 0))
 
-        imagegray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        imagegray = rgb_to_grayscale(image)
+        imagegray = to_fair(imagegray)
 
-        # fft
-        f = np.fft.fft2(imagegray)
-        fshift = np.fft.fftshift(f)
-
-        # BHPF
-        rows, cols = imagegray.shape
-        crow, ccol = int(rows / 2), int(cols / 2)
-        d = 30  # cutoff frequency
-        n = 2  # BHPF order
-        epsilon = 1e-6  # avoid dividing zero
-        Y, X = np.ogrid[:rows, :cols]
-        dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
-        maska = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
-        fshift_filtered = fshift * maska
-
-        # inverse fft
-        f_ishift = np.fft.ifftshift(fshift_filtered)
-        image_filtered = np.fft.ifft2(f_ishift)
-        imagegray = np.real(image_filtered).astype(np.float32)
-        imagegray = imagegray[:, :, None]
-        image = np.transpose(image, (2, 0, 1))
-        imagegray = np.transpose(imagegray, (2, 0, 1))
+        # image = np.array(image)
+        # image = np.transpose(image, (1, 2, 0))
+        #
+        # imagegray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        #
+        # # fft
+        # f = np.fft.fft2(imagegray)
+        # fshift = np.fft.fftshift(f)
+        #
+        # # BHPF
+        # rows, cols = imagegray.shape
+        # crow, ccol = int(rows / 2), int(cols / 2)
+        # d = 30  # cutoff frequency
+        # n = 2  # BHPF order
+        # epsilon = 1e-6  # avoid dividing zero
+        # Y, X = np.ogrid[:rows, :cols]
+        # dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
+        # maska = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
+        # fshift_filtered = fshift * maska
+        #
+        # # inverse fft
+        # f_ishift = np.fft.ifftshift(fshift_filtered)
+        # image_filtered = np.fft.ifft2(f_ishift)
+        # imagegray = np.real(image_filtered).astype(np.float32)
+        # imagegray = imagegray[:, :, None]
+        # image = np.transpose(image, (2, 0, 1))
+        # imagegray = np.transpose(imagegray, (2, 0, 1))
 
         return image, imagegray
 
     def transform_image(self, image, anomaly_source_path):
-        image = np.array(image)
-        image = np.transpose(image, (1, 2, 0))
 
-        do_aug_orig = torch.rand(1).numpy()[0] > 0.8
+        do_aug_orig = torch.rand(1).item() > 0.5
         if do_aug_orig:
-            image = self.rot(image=image)
+            # image = self.rot(image=image)
+            angle = torch.randint(-15, 15 + 1, ()).item()
+            image = TF.rotate(image, angle)
 
-        what_anomaly = torch.rand(1).numpy()[0]
-        if what_anomaly > 0.7:
-            augmented_image, anomaly_mask = self.augment_cutpaste(image)
+        what_anomaly = torch.rand(1).item()
+        if what_anomaly > 0.8:
+            augmented_image = self.augment_cutpaste(image)
         else:
-            augmented_image, anomaly_mask = self.augment_image(image, anomaly_source_path)
-        auggray = cv2.cvtColor(augmented_image, cv2.COLOR_BGR2GRAY)
+            augmented_image = self.augment_image(image, anomaly_source_path)
 
-        # fft
-        f = np.fft.fft2(auggray)
-        fshift = np.fft.fftshift(f)
+        auggray = rgb_to_grayscale(augmented_image)
 
-        # BHPF
-        rows, cols = auggray.shape
-        crow, ccol = int(rows / 2), int(cols / 2)
-        d = 30  # cutoff frequency
-        n = 2  # BHPF order
-        epsilon = 1e-6  # avoid dividing zero
-        Y, X = np.ogrid[:rows, :cols]
-        dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
-        mask = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
-        fshift_filtered = fshift * mask
+        auggray = to_fair(auggray)
 
-        # ifft
-        f_ishift = np.fft.ifftshift(fshift_filtered)
-        image_filtered = np.fft.ifft2(f_ishift)
-        auggray = np.real(image_filtered).astype(np.float32)
+        # image = np.array(image)
+        # image = np.transpose(image, (1, 2, 0))
+        #
+        # do_aug_orig = torch.rand(1).numpy()[0] > 0.8
+        # if do_aug_orig:
+        #     image = self.rot(image=image)
+        #
+        # what_anomaly = torch.rand(1).numpy()[0]
+        # if what_anomaly > 0.7:
+        #     augmented_image, anomaly_mask = self.augment_cutpaste(image)
+        # else:
+        #     augmented_image, anomaly_mask = self.augment_image(image, anomaly_source_path)
+        # auggray = cv2.cvtColor(augmented_image, cv2.COLOR_BGR2GRAY)
+        #
+        # # fft
+        # f = np.fft.fft2(auggray)
+        # fshift = np.fft.fftshift(f)
+        #
+        # # BHPF
+        # rows, cols = auggray.shape
+        # crow, ccol = int(rows / 2), int(cols / 2)
+        # d = 30  # cutoff frequency
+        # n = 2  # BHPF order
+        # epsilon = 1e-6  # avoid dividing zero
+        # Y, X = np.ogrid[:rows, :cols]
+        # dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
+        # mask = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
+        # fshift_filtered = fshift * mask
+        #
+        # # ifft
+        # f_ishift = np.fft.ifftshift(fshift_filtered)
+        # image_filtered = np.fft.ifft2(f_ishift)
+        # auggray = np.real(image_filtered).astype(np.float32)
+        #
+        # auggray = auggray[:, :, None]
+        # image = np.transpose(image, (2, 0, 1))
+        # auggray = np.transpose(auggray, (2, 0, 1))
 
-        auggray = auggray[:, :, None]
-        image = np.transpose(image, (2, 0, 1))
-        # augmented_image = np.transpose(augmented_image, (2, 0, 1))
-        auggray = np.transpose(auggray, (2, 0, 1))
-        # anomaly_mask = np.transpose(anomaly_mask, (2, 0, 1))
         return image, auggray
 
     def randAugmenter(self):
         aug_ind = np.random.choice(np.arange(len(self.augmenters)), 3, replace=False)
-        aug = iaa.Sequential([self.augmenters[aug_ind[0]],
-                              self.augmenters[aug_ind[1]],
-                              self.augmenters[aug_ind[2]]]
-                             )
+        # aug = iaa.Sequential([self.augmenters[aug_ind[0]],
+        #                       self.augmenters[aug_ind[1]],
+        #                       self.augmenters[aug_ind[2]]]
+        #                      )
+        aug = alb.Compose([self.augmenters[aug_ind[0]],
+                           self.augmenters[aug_ind[1]],
+                           self.augmenters[aug_ind[2]]]
+                          )
         return aug
 
     def imageRandAugmenter(self):
         aug_ind = np.random.choice(np.arange(len(self.image_augmenters)), 1, replace=False)
-        aug = iaa.Sequential([self.image_augmenters[aug_ind[0]]])
+        # aug = iaa.Sequential([self.image_augmenters[aug_ind[0]]])
+        aug = alb.Compose([self.image_augmenters[aug_ind[0]]])
         return aug
 
     def augment_image(self, image, anomaly_source_path):
+
+        image = image.cpu().numpy().transpose(1, 2, 0)
         aug = self.randAugmenter()
         image_aug = self.imageRandAugmenter()
         perlin_scale = 6
         min_perlin_scale = 0
 
-        anomaly_source_img = cv2.imread(anomaly_source_path)
-        anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[0], image.shape[1]))
+        aug_source = torch.rand(1).numpy()[0]
 
-        anomaly_img_augmented = aug(image=anomaly_source_img)
-        image = image_aug(image=image)
+        if aug_source > 0.00001:
+            augmented_image = image_aug(image=image)['image']
+            final_image = augmented_image.astype(np.float32)
 
-        perlin_scalex = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
-        perlin_scaley = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
-
-        perlin_noise = rand_perlin_2d_np((image.shape[0], image.shape[1]), (perlin_scalex, perlin_scaley))
-        perlin_noise = self.rot(image=perlin_noise)
-        threshold = 0.5
-        perlin_thr = np.where(perlin_noise > threshold, np.ones_like(perlin_noise), np.zeros_like(perlin_noise))
-        perlin_thr = np.expand_dims(perlin_thr, axis=2)
-
-        img_thr = anomaly_img_augmented.astype(np.float32) * perlin_thr / 255.0
-
-        beta = torch.rand(1).numpy()[0] * 0.8
-
-        augmented_image = image * (1 - perlin_thr) + (1 - beta) * img_thr + beta * image * perlin_thr
-
-        no_anomaly = torch.rand(1).numpy()[0]
-        if no_anomaly > 0.001:
-            image = image.astype(np.float32)
-            return image, np.zeros_like(perlin_thr, dtype=np.float32)
         else:
-            augmented_image = augmented_image.astype(np.float32)
+            anomaly_source_img = cv2.imread(anomaly_source_path)
+            anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[0], image.shape[1]))
+
+            # anomaly_augmented = aug(image=anomaly_source_img)
+            # image = image_aug(image=image)
+
+            anomaly_augmented = aug(image=anomaly_source_img)['image']
+
+            perlin_scalex = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
+            perlin_scaley = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
+
+            perlin_noise = rand_perlin_2d_np((image.shape[0], image.shape[1]), (perlin_scalex, perlin_scaley))
+            # perlin_noise = self.rot(image=perlin_noise)
+            perlin_noise = self.rot(image=perlin_noise)['image']
+            threshold = 0.5
+            perlin_thr = np.where(perlin_noise > threshold, np.ones_like(perlin_noise), np.zeros_like(perlin_noise))
+            perlin_thr = np.expand_dims(perlin_thr, axis=2)
+
+            img_thr = anomaly_augmented.astype(np.float32) * perlin_thr / 255.0
+
+            beta = torch.rand(1).numpy()[0] * 0.8
+
+            anomaly_augmented_image = image * (1 - perlin_thr) + (
+                    1 - beta) * img_thr + beta * image * perlin_thr
+
+            final_image = anomaly_augmented_image.astype(np.float32)
             msk = (perlin_thr).astype(np.float32)
-            augmented_image = msk * augmented_image + (1 - msk) * image
-            has_anomaly = 1.0
-            if np.sum(msk) == 0:
-                has_anomaly = 0.0
-            return augmented_image, msk
+            final_image = msk * final_image + (1 - msk) * image
+
+        return torch.tensor(final_image).permute(2, 0, 1)
 
     def augment_cutpaste(self, image):
-        no_anomaly = torch.rand(1).numpy()[0]
-        if no_anomaly > 0.5:
-            image = image.astype(np.float32)
-            return image, np.zeros((image.shape[0], image.shape[1], 1), dtype=np.float32)
+
+        no_anomaly = torch.rand(1).item()
+
+        if no_anomaly > 0.7:
+            image = image.float()
+            return image, torch.zeros((image.shape[0], image.shape[1], 1), dtype=torch.float32)
         else:
-            patch = cut_patch(image)
-            augmented_image, msk = paste_patch(image, patch)
-            msk = msk.astype(np.float32)
-            augmented_image = augmented_image.astype(np.float32)
-            has_anomaly = 1.0
-            if np.sum(msk) == 0:
-                has_anomaly = 0.0
-            return augmented_image, msk
+            patch = cut_patch(image)  # Assuming 'cut_patch' is a PyTorch-compatible function
+            augmented_image = paste_patch(image, patch)  # Assuming 'paste_patch' is a PyTorch-compatible function
+
+            augmented_image = augmented_image.float()
+
+            return augmented_image
+
+        # no_anomaly = torch.rand(1).numpy()[0]
+        # if no_anomaly > 0.5:
+        #     image = image.astype(np.float32)
+        #     return image, np.zeros((image.shape[0], image.shape[1], 1), dtype=np.float32)
+        # else:
+        #     patch = cut_patch(image)
+        #     augmented_image, msk = paste_patch(image, patch)
+        #     msk = msk.astype(np.float32)
+        #     augmented_image = augmented_image.astype(np.float32)
+        #     has_anomaly = 1.0
+        #     if np.sum(msk) == 0:
+        #         has_anomaly = 0.0
+        #     return augmented_image, msk
 
 
 class DetSegAugmenter:

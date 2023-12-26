@@ -35,12 +35,13 @@ class Fair(AnomalyModule):
     def __init__(
             self,
             anomaly_source_path: str | None = None,
-            in_channels: int = 3,
-            out_channels: int = 3
+            in_channels: int = 1,
+            out_channels: int = 3,
+            base_width: int = 128
     ) -> None:
         super(Fair, self).__init__()
 
-        self.model = FairModel(in_channels, out_channels)
+        self.model = FairModel(in_channels, out_channels, base_width)
         self.loss = FairLoss()
         self.augmenter = FairAugmenter(anomaly_source_path)
 
