@@ -297,37 +297,13 @@ class FairAugmenter:
     ) -> None:
         if anomaly_source_path is not None:
             self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
-        # self.image_augmenters = [
-        #     iaa.PiecewiseAffine(nb_rows=(4), nb_cols=(4), scale=(0.02, 0.02)),
-        #     iaa.ShearX((-15, 15), mode='edge'),
-        #     iaa.WithPolarWarping(
-        #         iaa.PiecewiseAffine(nb_rows=(2, 6), nb_cols=(2, 6), scale=(0.02, 0.02))
-        #     ),
-        # ]
 
         self.image_augmenters = [
             alb.PiecewiseAffine(scale=(0.02, 0.02), nb_rows=4, nb_cols=4, p=1.0),
             alb.IAAAffine(shear=(-15, 15), mode='edge', p=1.0),
-            alb.ElasticTransform(alpha=100, sigma=10, alpha_affine=1, p=1,always_apply=True),
+            alb.ElasticTransform(alpha=100, sigma=10, alpha_affine=1, p=1, always_apply=True),
             alb.OpticalDistortion(distort_limit=.15, shift_limit=0.05, p=1, always_apply=True)
         ]
-
-        # self.augmenters = [
-        #     iaa.GammaContrast((0.5, 2.0),
-        #                       per_channel=False
-        #                       ),
-        #     iaa.PiecewiseAffine(nb_rows=4, nb_cols=4, scale=(0.02, 0.02)),
-        #     iaa.MultiplyAndAddToBrightness(mul=(0.8, 1.2), add=(-30, 30)),
-        #     iaa.pillike.EnhanceSharpness(),
-        #     iaa.AddToHueAndSaturation((-50, 50), per_channel=True),
-        #     iaa.Solarize(0.5, threshold=(32, 128)),
-        #     iaa.Posterize(),
-        #     iaa.Invert(),
-        #     iaa.pillike.Autocontrast(),
-        #     iaa.pillike.Equalize(),
-        #     iaa.Affine(rotate=(-45, 45)),
-        #     iaa.Affine(scale=(0.2, 0.7)),
-        # ]
 
         self.augmenters = [
             alb.RandomGamma(gamma_limit=(0.5, 2.0), p=1.0),
@@ -376,34 +352,6 @@ class FairAugmenter:
         imagegray = rgb_to_grayscale(image)
         imagegray = to_fair(imagegray)
 
-        # image = np.array(image)
-        # image = np.transpose(image, (1, 2, 0))
-        #
-        # imagegray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        #
-        # # fft
-        # f = np.fft.fft2(imagegray)
-        # fshift = np.fft.fftshift(f)
-        #
-        # # BHPF
-        # rows, cols = imagegray.shape
-        # crow, ccol = int(rows / 2), int(cols / 2)
-        # d = 30  # cutoff frequency
-        # n = 2  # BHPF order
-        # epsilon = 1e-6  # avoid dividing zero
-        # Y, X = np.ogrid[:rows, :cols]
-        # dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
-        # maska = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
-        # fshift_filtered = fshift * maska
-        #
-        # # inverse fft
-        # f_ishift = np.fft.ifftshift(fshift_filtered)
-        # image_filtered = np.fft.ifft2(f_ishift)
-        # imagegray = np.real(image_filtered).astype(np.float32)
-        # imagegray = imagegray[:, :, None]
-        # image = np.transpose(image, (2, 0, 1))
-        # imagegray = np.transpose(imagegray, (2, 0, 1))
-
         return image, imagegray
 
     def transform_image(self, image, anomaly_source_path):
@@ -424,69 +372,26 @@ class FairAugmenter:
 
         auggray = to_fair(auggray)
 
-        # image = np.array(image)
-        # image = np.transpose(image, (1, 2, 0))
-        #
-        # do_aug_orig = torch.rand(1).numpy()[0] > 0.8
-        # if do_aug_orig:
-        #     image = self.rot(image=image)
-        #
-        # what_anomaly = torch.rand(1).numpy()[0]
-        # if what_anomaly > 0.7:
-        #     augmented_image, anomaly_mask = self.augment_cutpaste(image)
-        # else:
-        #     augmented_image, anomaly_mask = self.augment_image(image, anomaly_source_path)
-        # auggray = cv2.cvtColor(augmented_image, cv2.COLOR_BGR2GRAY)
-        #
-        # # fft
-        # f = np.fft.fft2(auggray)
-        # fshift = np.fft.fftshift(f)
-        #
-        # # BHPF
-        # rows, cols = auggray.shape
-        # crow, ccol = int(rows / 2), int(cols / 2)
-        # d = 30  # cutoff frequency
-        # n = 2  # BHPF order
-        # epsilon = 1e-6  # avoid dividing zero
-        # Y, X = np.ogrid[:rows, :cols]
-        # dist = np.sqrt((X - crow) ** 2 + (Y - ccol) ** 2)
-        # mask = 1 / (1 + (d / (dist + epsilon)) ** (2 * n))
-        # fshift_filtered = fshift * mask
-        #
-        # # ifft
-        # f_ishift = np.fft.ifftshift(fshift_filtered)
-        # image_filtered = np.fft.ifft2(f_ishift)
-        # auggray = np.real(image_filtered).astype(np.float32)
-        #
-        # auggray = auggray[:, :, None]
-        # image = np.transpose(image, (2, 0, 1))
-        # auggray = np.transpose(auggray, (2, 0, 1))
-
         return image, auggray
 
-    def randAugmenter(self):
+    def rand_augmenter(self):
         aug_ind = np.random.choice(np.arange(len(self.augmenters)), 3, replace=False)
-        # aug = iaa.Sequential([self.augmenters[aug_ind[0]],
-        #                       self.augmenters[aug_ind[1]],
-        #                       self.augmenters[aug_ind[2]]]
-        #                      )
         aug = alb.Compose([self.augmenters[aug_ind[0]],
                            self.augmenters[aug_ind[1]],
                            self.augmenters[aug_ind[2]]]
                           )
         return aug
 
-    def imageRandAugmenter(self):
+    def image_rand_augmenter(self):
         aug_ind = np.random.choice(np.arange(len(self.image_augmenters)), 1, replace=False)
-        # aug = iaa.Sequential([self.image_augmenters[aug_ind[0]]])
         aug = alb.Compose([self.image_augmenters[aug_ind[0]]])
         return aug
 
     def augment_image(self, image, anomaly_source_path):
 
         image = image.cpu().numpy().transpose(1, 2, 0)
-        aug = self.randAugmenter()
-        image_aug = self.imageRandAugmenter()
+        aug = self.rand_augmenter()
+        image_aug = self.image_rand_augmenter()
         perlin_scale = 6
         min_perlin_scale = 0
 
@@ -500,16 +405,12 @@ class FairAugmenter:
             anomaly_source_img = cv2.imread(anomaly_source_path)
             anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[0], image.shape[1]))
 
-            # anomaly_augmented = aug(image=anomaly_source_img)
-            # image = image_aug(image=image)
-
             anomaly_augmented = aug(image=anomaly_source_img)['image']
 
             perlin_scalex = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
             perlin_scaley = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
 
             perlin_noise = rand_perlin_2d_np((image.shape[0], image.shape[1]), (perlin_scalex, perlin_scaley))
-            # perlin_noise = self.rot(image=perlin_noise)
             perlin_noise = self.rot(image=perlin_noise)['image']
             threshold = 0.5
             perlin_thr = np.where(perlin_noise > threshold, np.ones_like(perlin_noise), np.zeros_like(perlin_noise))
@@ -542,20 +443,6 @@ class FairAugmenter:
             augmented_image = augmented_image.float()
 
             return augmented_image
-
-        # no_anomaly = torch.rand(1).numpy()[0]
-        # if no_anomaly > 0.5:
-        #     image = image.astype(np.float32)
-        #     return image, np.zeros((image.shape[0], image.shape[1], 1), dtype=np.float32)
-        # else:
-        #     patch = cut_patch(image)
-        #     augmented_image, msk = paste_patch(image, patch)
-        #     msk = msk.astype(np.float32)
-        #     augmented_image = augmented_image.astype(np.float32)
-        #     has_anomaly = 1.0
-        #     if np.sum(msk) == 0:
-        #         has_anomaly = 0.0
-        #     return augmented_image, msk
 
 
 class DetSegAugmenter:
