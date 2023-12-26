@@ -534,7 +534,7 @@ class FairAugmenter:
 
         if no_anomaly > 0.7:
             image = image.float()
-            return image, torch.zeros((image.shape[0], image.shape[1], 1), dtype=torch.float32)
+            return image
         else:
             patch = cut_patch(image)  # Assuming 'cut_patch' is a PyTorch-compatible function
             augmented_image = paste_patch(image, patch)  # Assuming 'paste_patch' is a PyTorch-compatible function
