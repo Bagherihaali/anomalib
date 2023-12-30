@@ -55,9 +55,6 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             if layer is not None:
                 layer[-1].register_forward_hook(hook_t)
 
-        # self.feature_extractor.encoder2[-1].register_forward_hook(hook_t)
-        # self.feature_extractor.encoder3[-1].register_forward_hook(hook_t)
-
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
 
