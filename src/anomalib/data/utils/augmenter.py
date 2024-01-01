@@ -55,7 +55,7 @@ def cut_patch(mb_img):  # for numpy
     bottom = bottom if (bottom - top) % 2 == 0 else bottom - 1
     right = right if (right - left) % 2 == 0 else right - 1
 
-    return mb_img[:, top:bottom, left:right]
+    return mb_img[:, top:bottom, left:right], top, left
 
     # h, w, c = mb_img.shape
     # top = random.randrange(0, round(h))
@@ -69,7 +69,7 @@ def cut_patch(mb_img):  # for numpy
     # return mb_img[top:bottom, left:right, :]
 
 
-def paste_patch(img, patch):
+def paste_patch(img, patch,top, left):
     imgc, imgh, imgw = img.shape
     patchc, patchh, patchw = patch.shape
 
@@ -84,8 +84,11 @@ def paste_patch(img, patch):
     affinepatch = F.grid_sample(patch.unsqueeze(0), affinepatch)
     affinepatch = affinepatch.squeeze()
 
-    patch_h_position = random.randint(1, round(imgh) - round(patchh) - 1)
-    patch_w_position = random.randint(1, round(imgw) - round(patchw) - 1)
+    # patch_h_position = random.randint(1, round(imgh) - round(patchh) - 1)
+    # patch_w_position = random.randint(1, round(imgw) - round(patchw) - 1)
+
+    patch_h_position = top
+    patch_w_position = left
 
     pasteimg = img.clone()
     pasteimg[:, patch_h_position:patch_h_position + patchh, patch_w_position:patch_w_position + patchw] = affinepatch
@@ -300,9 +303,9 @@ class FairAugmenter:
 
         self.image_augmenters = [
             alb.PiecewiseAffine(scale=(0.02, 0.02), nb_rows=4, nb_cols=4, p=1.0),
-            alb.IAAAffine(shear=(-15, 15), mode='edge', p=1.0),
-            alb.ElasticTransform(alpha=100, sigma=10, alpha_affine=1, p=1, always_apply=True),
-            alb.OpticalDistortion(distort_limit=.15, shift_limit=0.05, p=1, always_apply=True)
+            alb.IAAAffine(shear=(-30, 30), mode='edge', p=1.0),
+            alb.ElasticTransform(alpha=100, sigma=7, alpha_affine=1, p=1, always_apply=True),
+            alb.OpticalDistortion(distort_limit=.25, shift_limit=0.05, p=1, always_apply=True)
         ]
 
         self.augmenters = [
@@ -356,14 +359,14 @@ class FairAugmenter:
 
     def transform_image(self, image, anomaly_source_path):
 
-        do_aug_orig = torch.rand(1).item() > 0.5
+        do_aug_orig = torch.rand(1).item() > 0.7
         if do_aug_orig:
             # image = self.rot(image=image)
-            angle = torch.randint(-15, 15 + 1, ()).item()
+            angle = random.choice([90, -90])
             image = TF.rotate(image, angle)
 
         what_anomaly = torch.rand(1).item()
-        if what_anomaly > 0.8:
+        if what_anomaly > 0.7:
             augmented_image = self.augment_cutpaste(image)
         else:
             augmented_image = self.augment_image(image, anomaly_source_path)
@@ -437,8 +440,8 @@ class FairAugmenter:
             image = image.float()
             return image
         else:
-            patch = cut_patch(image)  # Assuming 'cut_patch' is a PyTorch-compatible function
-            augmented_image = paste_patch(image, patch)  # Assuming 'paste_patch' is a PyTorch-compatible function
+            patch, top, left = cut_patch(image)  # Assuming 'cut_patch' is a PyTorch-compatible function
+            augmented_image = paste_patch(image, patch, top, left)  # Assuming 'paste_patch' is a PyTorch-compatible function
 
             augmented_image = augmented_image.float()
 
