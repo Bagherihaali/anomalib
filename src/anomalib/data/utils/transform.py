@@ -22,6 +22,7 @@ class InputNormalizationMethod(str, Enum):
 
     NONE = "none"  # no normalization applied
     IMAGENET = "imagenet"  # normalization to ImageNet statistics
+    SHOGA = 'shoga'
 
 
 def get_transforms(
@@ -138,6 +139,8 @@ def get_transforms(
             transforms_list.append(A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)))
         elif normalization == InputNormalizationMethod.NONE:
             transforms_list.append(A.ToFloat(max_value=255))
+        elif normalization == InputNormalizationMethod.SHOGA:
+            transforms_list.append(A.Normalize(mean=(0.781, 0.781, 0.781), std=(0.201, 0.201, 0.201)))
         else:
             raise ValueError(f"Unknown normalization method: {normalization}")
 
