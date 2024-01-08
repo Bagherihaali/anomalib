@@ -8,7 +8,8 @@ from torch.nn import functional as F
 from sklearn.random_projection import SparseRandomProjection
 from scipy.ndimage import gaussian_filter
 
-from anomalib.models.fast_recon.kcenter_greedy import KCenterGreedy
+# from anomalib.models.fast_recon.kcenter_greedy import KCenterGreedy
+from anomalib.models.components import KCenterGreedy
 from anomalib.models.components import AnomalyModule
 from anomalib.models.fast_recon.torch_model import FastReconModel
 
@@ -82,6 +83,7 @@ class FastRecon(AnomalyModule):
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []
+        # self.embedding_temp = torch.Tensor([])
 
         self.model = FastReconModel(self.input_size, layers, backbone, lambda_value)
 
@@ -93,27 +95,21 @@ class FastRecon(AnomalyModule):
         self.model.feature_extractor.eval()
         features = self.model(batch["image"])
 
-        embeddings = []
-        for feature in features:
-            m = torch.nn.AvgPool2d(3, 1, 1)
-            embeddings.append(m(feature))
-        self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1]).cpu())
+        m = torch.nn.AvgPool2d(2, 2)
+        embeddings = [m(feature) for feature in features]
+        self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1]))
 
     def on_validation_start(self):
-        embedding_temp = torch.stack(self.embedding_temp)
+        embedding_temp = torch.stack(self.embedding_temp).to(self.device)
         total_embeddings = embedding_temp.permute(0, 2, 3, 1).contiguous()
         total_embeddings = total_embeddings.view(-1, embedding_temp.shape[1])
 
         embedding_mu = embedding_temp.view(embedding_temp.shape[0], embedding_temp.shape[1], -1)
 
-        self.random_projector = SparseRandomProjection(n_components='auto', eps=0.9)
-        selector = KCenterGreedy(total_embeddings, 0, 0)
-        selected_idx = selector.select_batch(
-            model=self.random_projector,
-            already_selected=[],
-            N=int(total_embeddings.shape[0] * self.coreset_sampling_ratio)
-        )
-        self.model.Sc = total_embeddings[selected_idx]
+        sampler = KCenterGreedy(embedding=total_embeddings, sampling_ratio=self.coreset_sampling_ratio)
+        coreset = sampler.sample_coreset()
+
+        self.model.Sc = coreset
         self.model.mu = torch.mean(embedding_mu, 0)
 
     def validation_step(self, batch, *args, **kwargs):  # Nearest Neighbour Search
