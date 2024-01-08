@@ -133,17 +133,26 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         self.backbone = backbone
         self.lambda_value = lambda_value
 
+        self.features = []
+        self.feature_extractor = None
+
+        # self.init_feature_extractor()
+
+        self.register_buffer("Sc", Tensor())
+        self.register_buffer("mu", Tensor())
+
+        self.Sc: Tensor
+        self.mu: Tensor
+
+    def init_feature_extractor(self):
         if self.backbone == 'wide_resnet50':
             self.feature_extractor = torch.hub.load('pytorch/vision:v0.9.0', 'wide_resnet50_2',
                                                     weights=Wide_ResNet50_2_Weights.DEFAULT)
         elif self.backbone == 'unet':
             self.feature_extractor = UNet(in_channels=3, out_channels=1, init_features=32)
-            weights = torch.load( r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation-pytorch_master\weights\unet.pt')
+            weights = torch.load(
+                r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation-pytorch_master\weights\unet.pt')
             self.feature_extractor.load_state_dict(weights)
-            # self.feature_extractor = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-            #                                         in_channels=3, out_channels=1, init_features=32, pretrained=True)
-
-        self.features = []
 
         def hook_t(module, input, output):
             self.features.append(output)
@@ -153,15 +162,10 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             if layer is not None:
                 layer[-1].register_forward_hook(hook_t)
 
-        self.register_buffer("Sc", Tensor())
-        self.register_buffer("mu", Tensor())
-
-        self.Sc: Tensor
-        self.mu: Tensor
-
     def forward(self, input_tensor: Tensor) -> Tensor:
         self.features = []
 
+        self.feature_extractor.eval()
         with torch.no_grad():
             self.feature_extractor(input_tensor)
             features = self.features
@@ -186,7 +190,6 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         embedding_ = embedding_concat(embeddings[0], embeddings[1]).to(self.Sc.device)
         total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
         for embedding in total_embedding:
-
             q = embedding.view(-1, embedding_.shape[1])
 
             lamda = self.lambda_value
@@ -205,7 +208,8 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             anomaly_map = score_patches.reshape((embedding_.shape[-1], embedding_.shape[-1]))
 
             # max value
-            anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(anomaly_map.unsqueeze(0).unsqueeze(0))
+            anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(
+                anomaly_map.unsqueeze(0).unsqueeze(0))
 
             anomaly_map_resized = (anomaly_map_resized - anomaly_map_resized.min()) / (
                     anomaly_map_resized.max() - anomaly_map_resized.min())

@@ -79,20 +79,24 @@ class FastRecon(AnomalyModule):
                  ):
         super(FastRecon, self).__init__()
 
+        self.layers = layers
+        self.backbone = backbone
+        self.lambda_value = lambda_value
+
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []
-        # self.embedding_temp = torch.Tensor([])
 
-        self.model = FastReconModel(self.input_size, layers, backbone, lambda_value)
+        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value)
+        self.model.init_feature_extractor()
+        self.model.feature_extractor.to(self.device)
 
     @staticmethod
     def configure_optimizers() -> None:
         return None
 
     def training_step(self, batch, batch_idx):
-        self.model.feature_extractor.eval()
         features = self.model(batch["image"])
 
         m = torch.nn.AvgPool2d(2, 2)
@@ -100,6 +104,10 @@ class FastRecon(AnomalyModule):
         self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1]))
 
     def on_validation_start(self):
+        del self.model.feature_extractor
+        torch.cuda.empty_cache()
+        self.model.feature_extractor = None
+
         embedding_temp = torch.stack(self.embedding_temp).to(self.device)
         total_embeddings = embedding_temp.permute(0, 2, 3, 1).contiguous()
         total_embeddings = total_embeddings.view(-1, embedding_temp.shape[1])
@@ -112,7 +120,11 @@ class FastRecon(AnomalyModule):
         self.model.Sc = coreset
         self.model.mu = torch.mean(embedding_mu, 0)
 
+        self.model.init_feature_extractor()
+        self.model.feature_extractor.to(self.device)
+
     def validation_step(self, batch, *args, **kwargs):  # Nearest Neighbour Search
+
         anomaly_maps = self.model(batch['image'])
         batch["anomaly_maps"] = anomaly_maps
         batch['visualization'] = {
