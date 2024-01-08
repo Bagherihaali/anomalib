@@ -177,37 +177,42 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         sc = self.Sc
         mu = torch.t(self.mu)
+        features = self.features
 
-        embeddings = []
-        m = torch.nn.AvgPool2d(3, 1, 1)
-        for feature in features:
-            embeddings.append(m(feature))
+        total_anomaly_map = []
+        m = torch.nn.AvgPool2d(2, 2)
+        embeddings = [m(feature) for feature in features]
+
         embedding_ = embedding_concat(embeddings[0], embeddings[1]).to(self.Sc.device)
-        embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
-        q = embedding.view(-1, embedding_.shape[1])
+        total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
+        for embedding in total_embedding:
 
-        lamda = self.lambda_value
+            q = embedding.view(-1, embedding_.shape[1])
 
-        temp = (torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc)))
-        temp2 = torch.mm(mu, torch.t(sc))
-        w = torch.mm((torch.mm(q, torch.t(sc)) + lamda * temp2), torch.linalg.inv(temp))
-        q_hat = torch.mm(w, sc)
+            lamda = self.lambda_value
 
-        # original
-        score_patches = torch.abs(q - q_hat)
-        score_patches_temp = torch.norm(score_patches, dim=1)
+            temp = torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc))
+            temp2 = torch.mm(mu, torch.t(sc))
+            w = torch.mm((torch.mm(q, torch.t(sc)) + lamda * temp2), torch.pinverse(temp))
+            q_hat = torch.mm(w, sc)
 
-        # form heatmap
-        score_patches = torch.t(score_patches_temp)
-        # anomaly_map = score_patches.reshape((int(self.input_size[0] / 8), int(self.input_size[1] / 8)))
-        anomaly_map = score_patches.reshape((embedding_.shape[-1], embedding_.shape[-1]))
+            # original
+            score_patches = torch.abs(q - q_hat)
+            score_patches_temp = torch.norm(score_patches, dim=1)
 
-        # max value
-        anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(anomaly_map.unsqueeze(0).unsqueeze(0))
+            # form heatmap
+            score_patches = torch.t(score_patches_temp)
+            anomaly_map = score_patches.reshape((embedding_.shape[-1], embedding_.shape[-1]))
 
-        anomaly_map_resized = (anomaly_map_resized - anomaly_map_resized.min()) / (
-                anomaly_map_resized.max() - anomaly_map_resized.min())
+            # max value
+            anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(anomaly_map.unsqueeze(0).unsqueeze(0))
 
-        final_anomaly_map = anomaly_map_resized.squeeze(0).to(self.Sc.device)
+            anomaly_map_resized = (anomaly_map_resized - anomaly_map_resized.min()) / (
+                    anomaly_map_resized.max() - anomaly_map_resized.min())
 
-        return final_anomaly_map
+            final_anomaly_map = anomaly_map_resized.squeeze(0).to(self.Sc.device)
+
+            total_anomaly_map.append(final_anomaly_map)
+
+        total_anomaly_map = torch.stack(total_anomaly_map).to(self.Sc.device)
+        return total_anomaly_map
