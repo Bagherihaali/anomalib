@@ -73,22 +73,22 @@ def paste_patch(img, patch, top, left):
     imgc, imgh, imgw = img.shape
     patchc, patchh, patchw = patch.shape
 
-    # angle = (torch.mul(torch.rand(1), 4 * math.pi) - 2 * math.pi).item()
-    # scale = 1  # You can change this if needed
-    # affinematrix = torch.tensor([
-    #     [scale * math.cos(angle), -scale * math.sin(angle), 0],
-    #     [scale * math.sin(angle), scale * math.cos(angle), 0]
-    # ], dtype=torch.float32)
+    angle = (torch.mul(torch.rand(1), 4 * math.pi) - 2 * math.pi).item()
+    scale = 1  # You can change this if needed
+    affinematrix = torch.tensor([
+        [scale * math.cos(angle), -scale * math.sin(angle), 0],
+        [scale * math.sin(angle), scale * math.cos(angle), 0]
+    ], dtype=torch.float32)
 
-    # affinepatch = F.affine_grid(affinematrix.view(1, 2, 3), torch.Size((1, patchc, patchh, patchw)))
-    # affinepatch = F.grid_sample(patch.unsqueeze(0), affinepatch)
-    # affinepatch = affinepatch.squeeze()
+    affinepatch = F.affine_grid(affinematrix.view(1, 2, 3), torch.Size((1, patchc, patchh, patchw)))
+    affinepatch = F.grid_sample(patch.unsqueeze(0), affinepatch)
+    affinepatch = affinepatch.squeeze()
 
-    # patch_h_position = random.randint(1, round(imgh) - round(patchh) - 1)
-    # patch_w_position = random.randint(1, round(imgw) - round(patchw) - 1)
+    patch_h_position = random.randint(1, round(imgh) - round(patchh) - 1)
+    patch_w_position = random.randint(1, round(imgw) - round(patchw) - 1)
 
-    dims = random.choice([[1], [2], [1, 2]])
-    affinepatch = torch.flip(patch, dims=dims)
+    # dims = random.choice([[1], [2], [1, 2]])
+    # affinepatch = torch.flip(patch, dims=dims)
 
     patch_h_position = top
     patch_w_position = left
@@ -403,7 +403,7 @@ class FairAugmenter:
 
         aug_source = torch.rand(1).numpy()[0]
 
-        if aug_source > 0.00001:
+        if aug_source > 0.9999:
             augmented_image = image_aug(image=image)['image']
             final_image = augmented_image.astype(np.float32)
 
