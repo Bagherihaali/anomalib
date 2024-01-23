@@ -24,7 +24,11 @@ class MLFlowModelCheckpoint(ModelCheckpoint):
                     self.best_score = callback.best_model_score
 
         if self.path_to_best_model != '' and self.last_saved_model != self.path_to_best_model:
-            model = pl_module.load_from_checkpoint(self.path_to_best_model)
+            # TODO: it's just a dirty monke patching to work with huggingface mask2former model
+            if 'class2label' in vars(pl_module):
+                model = pl_module.load_from_checkpoint(self.path_to_best_model, class2label=pl_module.class2label)
+            else:
+                model = pl_module.load_from_checkpoint(self.path_to_best_model)
             conda_env = self.requirements_path + r'\environment.yaml'
             mlflow.pytorch.log_model(model, str(self.dirpath), conda_env=conda_env)
             pl_module.logger.log_metrics({'best_score': float(self.best_score)})
