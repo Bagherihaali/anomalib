@@ -85,7 +85,10 @@ class Draem(AnomalyModule):
         """
         del args, kwargs  # These variables are not used.
 
+        batch["image"] = batch["image"][:, 1, :, :].unsqueeze(1)  # make images monochrome
+
         input_image = batch["image"]
+
         # Apply corruption to input image
         augmented_image, anomaly_mask = self.augmenter.augment_batch(input_image)
         # Generate model prediction
@@ -120,7 +123,10 @@ class Draem(AnomalyModule):
         """
         del args, kwargs  # These variables are not used.
 
+        batch["image"] = batch["image"][:, 1, :, :].unsqueeze(1) # make images monochrome
+
         prediction = self.model(batch["image"])
+
         batch["anomaly_maps"] = prediction
         batch['visualization'] = {
             'input_image': batch["image"],

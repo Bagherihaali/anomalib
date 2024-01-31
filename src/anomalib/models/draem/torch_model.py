@@ -22,8 +22,8 @@ class DraemModel(nn.Module):
 
     def __init__(self, sspcab: bool = False) -> None:
         super().__init__()
-        self.reconstructive_subnetwork = ReconstructiveSubNetwork(sspcab=sspcab)
-        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=6, out_channels=2)
+        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=sspcab)
+        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=2, out_channels=2)
 
     def forward(self, batch: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         """Compute the reconstruction and anomaly mask from an input image.
@@ -52,7 +52,7 @@ class ReconstructiveSubNetwork(nn.Module):
         base_width (int): Base dimensionality of the layers of the autoencoder.
     """
 
-    def __init__(self, in_channels: int = 3, out_channels: int = 3, base_width=128, sspcab: bool = False) -> None:
+    def __init__(self, in_channels: int = 3, out_channels: int = 3, base_width=64, sspcab: bool = False) -> None:
         super().__init__()
         self.encoder = EncoderReconstructive(in_channels, base_width, sspcab=sspcab)
         self.decoder = DecoderReconstructive(base_width, out_channels=out_channels)
@@ -80,7 +80,7 @@ class DiscriminativeSubNetwork(nn.Module):
         base_width (int): Base dimensionality of the layers of the autoencoder.
     """
 
-    def __init__(self, in_channels: int = 3, out_channels: int = 3, base_width: int = 64) -> None:
+    def __init__(self, in_channels: int = 3, out_channels: int = 3, base_width: int = 16) -> None:
         super().__init__()
         self.encoder_segment = EncoderDiscriminative(in_channels, base_width)
         self.decoder_segment = DecoderDiscriminative(base_width, out_channels=out_channels)

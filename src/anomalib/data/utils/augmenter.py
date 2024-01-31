@@ -239,6 +239,7 @@ class Augmenter:
         if anomaly_source_path:
             anomaly_source_img = cv2.imread(anomaly_source_path)
             anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(width, height))
+
         else:  # if no anomaly source is specified, we use the perlin noise as anomalous source
             anomaly_source_img = np.expand_dims(perlin_noise, 2).repeat(3, 2)
             anomaly_source_img = (anomaly_source_img * 255).astype(np.uint8)
@@ -248,6 +249,9 @@ class Augmenter:
         anomaly_img_augmented = aug(image=anomaly_source_img)
 
         # Create anomalous perturbation that we will apply to the image
+        anomaly_img_augmented = cv2.cvtColor(anomaly_img_augmented, cv2.COLOR_BGR2GRAY)
+        anomaly_img_augmented = np.expand_dims(anomaly_img_augmented, -1)
+
         perturbation = anomaly_img_augmented.astype(np.float32) * mask / 255.0
 
         return perturbation, mask
