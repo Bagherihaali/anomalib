@@ -99,6 +99,14 @@ class Draem(AnomalyModule):
             )
 
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        batch['visualization'] = {
+            "mask": anomaly_mask,
+            'input_image': input_image,
+            'augmented_image': augmented_image,
+            'prediction': torch.softmax(prediction, dim=1)[:, 1, ...],
+            'reconstruction': reconstruction
+        }
+
         return {"loss": loss}
 
     def validation_step(self, batch: dict[str, str | Tensor], *args, **kwargs) -> STEP_OUTPUT:
@@ -114,6 +122,10 @@ class Draem(AnomalyModule):
 
         prediction = self.model(batch["image"])
         batch["anomaly_maps"] = prediction
+        batch['visualization'] = {
+            'input_image': batch["image"],
+            'anomaly_maps': prediction,
+        }
         return batch
 
 
