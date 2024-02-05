@@ -189,34 +189,29 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         embedding_ = embedding_concat(embeddings[0], embeddings[1]).to(self.Sc.device)
         total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
-        for embedding in total_embedding:
-            q = embedding.view(-1, embedding_.shape[1])
 
-            lamda = self.lambda_value
+        lamda = self.lambda_value
+        q_batch = total_embedding.view(total_embedding.shape[0], -1, embedding_.shape[1])
 
-            temp = torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc))
-            temp2 = torch.mm(mu, torch.t(sc))
-            w = torch.mm((torch.mm(q, torch.t(sc)) + lamda * temp2), torch.pinverse(temp))
-            q_hat = torch.mm(w, sc)
+        temp = torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc))
 
-            # original
-            score_patches = torch.abs(q - q_hat)
-            score_patches_temp = torch.norm(score_patches, dim=1)
+        temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0],1,1)
 
-            # form heatmap
-            score_patches = torch.t(score_patches_temp)
-            anomaly_map = score_patches.reshape((embedding_.shape[-1], embedding_.shape[-1]))
+        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch), torch.pinverse(temp))
+        q_hat_batch = torch.matmul(w_batch, sc)
 
-            # max value
-            anomaly_map_resized = Resize((self.input_size[0], self.input_size[1]))(
-                anomaly_map.unsqueeze(0).unsqueeze(0))
+        score_patches_batch = torch.abs(q_batch - q_hat_batch)
+        score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
+        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-1], embedding_.shape[-1])
+        anomaly_map_resized_batch = Resize((self.input_size[0], self.input_size[1]))(
+            anomaly_map_batch).unsqueeze(1)
 
-            anomaly_map_resized = (anomaly_map_resized - anomaly_map_resized.min()) / (
-                    anomaly_map_resized.max() - anomaly_map_resized.min())
+        min_values, _ = anomaly_map_resized_batch.min(dim=2, keepdim=True)
+        min_values, _ = min_values.min(dim=3, keepdim=True)
 
-            final_anomaly_map = anomaly_map_resized.squeeze(0).to(self.Sc.device)
+        max_values, _ = anomaly_map_resized_batch.max(dim=2, keepdim=True)
+        max_values, _ = max_values.max(dim=3, keepdim=True)
 
-            total_anomaly_map.append(final_anomaly_map)
+        anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
 
-        total_anomaly_map = torch.stack(total_anomaly_map).to(self.Sc.device)
-        return total_anomaly_map
+        return anomaly_map_resized_batch_normal
