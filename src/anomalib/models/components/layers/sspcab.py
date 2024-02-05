@@ -72,9 +72,9 @@ class SSPCAB(nn.Module):
         padded = F.pad(inputs, (self.pad,) * 4)
         masked_out = torch.zeros_like(inputs)
         masked_out += self.masked_conv1(padded[..., : -self.crop, : -self.crop])
-        masked_out += self.masked_conv2(padded[..., : -self.crop, self.crop :])
-        masked_out += self.masked_conv3(padded[..., self.crop :, : -self.crop])
-        masked_out += self.masked_conv4(padded[..., self.crop :, self.crop :])
+        masked_out += self.masked_conv2(padded[..., : -self.crop, self.crop:])
+        masked_out += self.masked_conv3(padded[..., self.crop:, : -self.crop])
+        masked_out += self.masked_conv4(padded[..., self.crop:, self.crop:])
 
         # apply channel attention module
         sspcab_out = self.attention_module(masked_out)
