@@ -29,6 +29,12 @@ class MLFlowModelCheckpoint(ModelCheckpoint):
                 model = pl_module.load_from_checkpoint(self.path_to_best_model, class2label=pl_module.class2label)
             else:
                 model = pl_module.load_from_checkpoint(self.path_to_best_model)
+
+            if hasattr(model, 'removable_handles'):
+                for handle in model.removable_handles.values():
+                    handle.remove()
+                model.removable_handles = {}
+
             conda_env = self.requirements_path + r'\environment.yaml'
             mlflow.pytorch.log_model(model, str(self.dirpath), conda_env=conda_env)
             pl_module.logger.log_metrics({'best_score': float(self.best_score)})

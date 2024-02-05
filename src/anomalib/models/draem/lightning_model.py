@@ -33,11 +33,11 @@ class Draem(AnomalyModule):
     """
 
     def __init__(
-        self,
-        enable_sspcab: bool = False,
-        sspcab_lambda: float = 0.1,
-        anomaly_source_path: str | None = None,
-        beta: float | tuple[float, float] = (0.1, 1.0),
+            self,
+            enable_sspcab: bool = False,
+            sspcab_lambda: float = 0.1,
+            anomaly_source_path: str | None = None,
+            beta: float | tuple[float, float] = (0.1, 1.0),
     ) -> None:
         super().__init__()
 
@@ -45,6 +45,7 @@ class Draem(AnomalyModule):
         self.model = DraemModel(sspcab=enable_sspcab)
         self.loss = DraemLoss()
         self.sspcab = enable_sspcab
+        self.removable_handles = {}
 
         if self.sspcab:
             self.sspcab_activations: dict = {}
@@ -68,8 +69,10 @@ class Draem(AnomalyModule):
 
             return hook
 
-        self.model.reconstructive_subnetwork.encoder.mp4.register_forward_hook(get_activation("input"))
-        self.model.reconstructive_subnetwork.encoder.block5.register_forward_hook(get_activation("output"))
+        self.removable_handles['input'] = self.model.reconstructive_subnetwork.encoder.mp4.register_forward_hook(
+            get_activation("input"))
+        self.removable_handles['output'] = self.model.reconstructive_subnetwork.encoder.block5.register_forward_hook(
+            get_activation("output"))
 
     def training_step(self, batch: dict[str, str | Tensor], *args, **kwargs) -> STEP_OUTPUT:
         """Training Step of DRAEM.
@@ -123,7 +126,7 @@ class Draem(AnomalyModule):
         """
         del args, kwargs  # These variables are not used.
 
-        batch["image"] = batch["image"][:, 1, :, :].unsqueeze(1) # make images monochrome
+        batch["image"] = batch["image"][:, 1, :, :].unsqueeze(1)  # make images monochrome
 
         prediction = self.model(batch["image"])
 
