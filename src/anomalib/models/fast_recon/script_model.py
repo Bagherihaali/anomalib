@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from torchvision.models import Wide_ResNet50_2_Weights
@@ -7,6 +8,7 @@ from torch.nn import functional as F
 from collections import OrderedDict
 from typing import Tuple
 from abc import ABC
+from anomalib.models.fast_recon.torch_model import embedding_concat
 
 
 class DynamicBufferModule(ABC, nn.Module):
@@ -53,22 +55,6 @@ class DynamicBufferModule(ABC, nn.Module):
         super()._load_from_state_dict(state_dict, prefix, *args)
 
 
-def embedding_concat(x, y):
-    # from https://github.com/xiahaifeng1995/PaDiM-Anomaly-Detection-Localization-master
-    B, C1, H1, W1 = x.size()
-    _, C2, H2, W2 = y.size()
-    s = int(H1 / H2)
-    x = F.unfold(x, kernel_size=s, dilation=1, stride=s)
-    x = x.view(B, C1, -1, H2, W2)
-    z = torch.zeros(B, C1 + C2, x.size(2), H2, W2)
-    for i in range(x.size(2)):
-        z[:, :, i, :, :] = torch.cat((x[:, :, i, :, :], y), 1)
-    z = z.view(B, -1, H2 * W2)
-    z = F.fold(z, kernel_size=s, output_size=(H1, W1), stride=s)
-
-    return z
-
-
 class UNet(nn.Module):
 
     def __init__(self, in_channels=3, out_channels=1, init_features=32):
@@ -113,21 +99,6 @@ class UNet(nn.Module):
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
 
-        bottleneck = self.bottleneck(self.pool4(enc4))
-
-        dec4 = self.upconv4(bottleneck)
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
-        dec3 = self.upconv3(dec4)
-        dec3 = torch.cat((dec3, enc3), dim=1)
-        dec3 = self.decoder3(dec3)
-        dec2 = self.upconv2(dec3)
-        dec2 = torch.cat((dec2, enc2), dim=1)
-        dec2 = self.decoder2(dec2)
-        dec1 = self.upconv1(dec2)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
-        # return torch.sigmoid(self.conv(dec1))
         return enc3, enc4
 
     @staticmethod
@@ -170,13 +141,14 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
             input_size: tuple[int, int] = [1024, 1024],
             feature_extractor: UNet = None,
             lambda_value: int = 2,
+            s: int = 2
     ):
         super().__init__()
         self.input_size = input_size
 
         self.lambda_value = lambda_value
         self.feature_extractor = feature_extractor
-
+        self.s = s
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
         self.m = torch.nn.AvgPool2d(2, 2)
@@ -196,7 +168,7 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
 
         embeddings = [self.m(feature) for feature in features]
 
-        embedding_ = embedding_concat(embeddings[0], embeddings[1]).to(self.Sc.device)
+        embedding_ = embedding_concat(embeddings[0], embeddings[1], self.s).to(self.Sc.device)
         total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
 
         lamda = self.lambda_value
@@ -206,7 +178,7 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
 
         temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0], 1, 1)
 
-        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch), torch.pinverse(temp))
+        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch), torch.linalg.pinv(temp))
         q_hat_batch = torch.matmul(w_batch, sc)
 
         score_patches_batch = torch.abs(q_batch - q_hat_batch)
