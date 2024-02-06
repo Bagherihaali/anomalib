@@ -9,18 +9,9 @@ from collections import OrderedDict
 from anomalib.models.components import DynamicBufferModule
 
 
-def embedding_concat(x, y):
+def embedding_concat(x:Tensor, y:Tensor, s:int):
     # from https://github.com/xiahaifeng1995/PaDiM-Anomaly-Detection-Localization-master
-    B, C1, H1, W1 = x.size()
-    _, C2, H2, W2 = y.size()
-    s = int(H1 / H2)
-    x = F.unfold(x, kernel_size=s, dilation=1, stride=s)
-    x = x.view(B, C1, -1, H2, W2)
-    z = torch.zeros(B, C1 + C2, x.size(2), H2, W2)
-    for i in range(x.size(2)):
-        z[:, :, i, :, :] = torch.cat((x[:, :, i, :, :], y), 1)
-    z = z.view(B, -1, H2 * W2)
-    z = F.fold(z, kernel_size=s, output_size=(H1, W1), stride=s)
+    z = torch.cat((x, y.repeat_interleave(s, dim=2).repeat_interleave(s, dim=3)), dim=1)
 
     return z
 
@@ -125,14 +116,15 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             input_size: tuple[int, int],
             layers: tuple[str, str],
             backbone: str = 'wide_resnet50',
-            lambda_value: int = 2
+            lambda_value: int = 2,
+            m=None,
     ):
         super().__init__()
         self.input_size = input_size
         self.layers = layers
         self.backbone = backbone
         self.lambda_value = lambda_value
-
+        self.m = m
         self.features = []
         self.feature_extractor = None
 
@@ -183,11 +175,10 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         mu = torch.t(self.mu)
         features = self.features
 
-        total_anomaly_map = []
-        m = torch.nn.AvgPool2d(2, 2)
-        embeddings = [m(feature) for feature in features]
+        embeddings = [self.m(feature) for feature in features]
 
-        embedding_ = embedding_concat(embeddings[0], embeddings[1]).to(self.Sc.device)
+        s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
+        embedding_ = embedding_concat(embeddings[0], embeddings[1], s).to(self.Sc.device)
         total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
 
         lamda = self.lambda_value
@@ -195,14 +186,15 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         temp = torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc))
 
-        temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0],1,1)
+        temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0], 1, 1)
 
         w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch), torch.pinverse(temp))
         q_hat_batch = torch.matmul(w_batch, sc)
 
         score_patches_batch = torch.abs(q_batch - q_hat_batch)
         score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
-        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-1], embedding_.shape[-1])
+        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-1],
+                                                             embedding_.shape[-1])
         anomaly_map_resized_batch = Resize((self.input_size[0], self.input_size[1]))(
             anomaly_map_batch).unsqueeze(1)
 

@@ -11,63 +11,9 @@ from scipy.ndimage import gaussian_filter
 # from anomalib.models.fast_recon.kcenter_greedy import KCenterGreedy
 from anomalib.models.components import KCenterGreedy
 from anomalib.models.components import AnomalyModule
-from anomalib.models.fast_recon.torch_model import FastReconModel
+from anomalib.models.fast_recon.torch_model import FastReconModel, embedding_concat
 
 __all__ = ["FastRecon"]
-
-
-def embedding_concat(x, y):
-    # from https://github.com/xiahaifeng1995/PaDiM-Anomaly-Detection-Localization-master
-    B, C1, H1, W1 = x.size()
-    _, C2, H2, W2 = y.size()
-    s = int(H1 / H2)
-    x = F.unfold(x, kernel_size=s, dilation=1, stride=s)
-    x = x.view(B, C1, -1, H2, W2)
-    z = torch.zeros(B, C1 + C2, x.size(2), H2, W2)
-    for i in range(x.size(2)):
-        z[:, :, i, :, :] = torch.cat((x[:, :, i, :, :], y), 1)
-    z = z.view(B, -1, H2 * W2)
-    z = F.fold(z, kernel_size=s, output_size=(H1, W1), stride=s)
-
-    return z
-
-
-def min_max_norm(image):
-    a_min, a_max = image.min(), image.max()
-    return (image - a_min) / (a_max - a_min)
-
-
-def cvt2heatmap(gray):
-    heatmap = cv2.applyColorMap(np.uint8(gray), cv2.COLORMAP_JET)
-    return heatmap
-
-
-def heatmap_on_image(heatmap, image):
-    if heatmap.shape != image.shape:
-        heatmap = cv2.resize(heatmap, (image.shape[0], image.shape[1]))
-    out = np.float32(heatmap) / 255 + np.float32(image) / 255
-    out = out / np.max(out)
-    return np.uint8(255 * out)
-
-
-def save_anomaly_map(anomaly_map, input_img, file_name):
-    # print('start save anomly_map picture:{}'.format(file_name))
-    if anomaly_map.shape[0] != input_img.shape[0]:
-        anomaly_map = cv2.resize(anomaly_map, (input_img.shape[1], input_img.shape[0]))
-        # print('done')
-    anomaly_map_norm = min_max_norm(anomaly_map)
-    anomaly_map_norm_hm = cvt2heatmap(anomaly_map_norm * 255)
-
-    # anomaly map on image
-    heatmap = cvt2heatmap(anomaly_map_norm * 255)
-    hm_on_img = heatmap_on_image(heatmap, input_img)
-
-    # save images
-    cv2.imwrite(os.path.join(r'C:\Users\Mohammad\Desktop\temp-fast-recon', f'{file_name}.jpg'), input_img)
-    cv2.imwrite(os.path.join(r'C:\Users\Mohammad\Desktop\temp-fast-recon', f'{file_name}_amap.jpg'),
-                anomaly_map_norm_hm)
-    cv2.imwrite(os.path.join(r'C:\Users\Mohammad\Desktop\temp-fast-recon', f'{file_name}_amap_on_img.jpg'), hm_on_img)
-
 
 class FastRecon(AnomalyModule):
     def __init__(self,
@@ -82,16 +28,16 @@ class FastRecon(AnomalyModule):
         self.layers = layers
         self.backbone = backbone
         self.lambda_value = lambda_value
+        self.m = torch.nn.AvgPool2d(2, 2)
 
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []
 
-        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value)
+        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m)
         self.model.init_feature_extractor()
         self.model.feature_extractor.to(self.device)
-
     @staticmethod
     def configure_optimizers() -> None:
         return None
@@ -99,9 +45,10 @@ class FastRecon(AnomalyModule):
     def training_step(self, batch, batch_idx):
         features = self.model(batch["image"])
 
-        m = torch.nn.AvgPool2d(2, 2)
-        embeddings = [m(feature) for feature in features]
-        self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1]))
+        embeddings = [self.m(feature) for feature in features]
+        s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
+
+        self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1], s))
 
     def on_validation_start(self):
         del self.model.feature_extractor
