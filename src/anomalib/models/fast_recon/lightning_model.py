@@ -15,6 +15,7 @@ from anomalib.models.fast_recon.torch_model import FastReconModel, embedding_con
 
 __all__ = ["FastRecon"]
 
+
 class FastRecon(AnomalyModule):
     def __init__(self,
                  layers: tuple[str, str] = ('layer1', 'layer2'),
@@ -28,7 +29,7 @@ class FastRecon(AnomalyModule):
         self.layers = layers
         self.backbone = backbone
         self.lambda_value = lambda_value
-        self.m = torch.nn.AvgPool2d(2, 2)
+        self.m = torch.nn.AvgPool2d(4, 4)
 
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
@@ -38,6 +39,7 @@ class FastRecon(AnomalyModule):
         self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m)
         self.model.init_feature_extractor()
         self.model.feature_extractor.to(self.device)
+
     @staticmethod
     def configure_optimizers() -> None:
         return None
@@ -46,6 +48,7 @@ class FastRecon(AnomalyModule):
         features = self.model(batch["image"])
 
         embeddings = [self.m(feature) for feature in features]
+
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
 
         self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1], s))
@@ -55,13 +58,12 @@ class FastRecon(AnomalyModule):
         torch.cuda.empty_cache()
         self.model.feature_extractor = None
 
-        embedding_temp = torch.stack(self.embedding_temp).to(self.device)
-        total_embeddings = embedding_temp.permute(0, 2, 3, 1).contiguous()
-        total_embeddings = total_embeddings.view(-1, embedding_temp.shape[1])
+        embedding_temp = torch.stack(self.embedding_temp)
+        total_embeddings = embedding_temp.permute(0, 2, 3, 1).reshape(-1, embedding_temp.shape[1]).contiguous()
 
         embedding_mu = embedding_temp.view(embedding_temp.shape[0], embedding_temp.shape[1], -1)
 
-        sampler = KCenterGreedy(embedding=total_embeddings, sampling_ratio=self.coreset_sampling_ratio)
+        sampler = KCenterGreedy(embedding=total_embeddings.to(self.device), sampling_ratio=self.coreset_sampling_ratio)
         coreset = sampler.sample_coreset()
 
         self.model.Sc = coreset
