@@ -97,9 +97,9 @@ class UNet(nn.Module):
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
-        enc4 = self.encoder4(self.pool3(enc3))
+        # enc4 = self.encoder4(self.pool3(enc3))
 
-        return enc3, enc4
+        return enc2, enc3
 
     @staticmethod
     def _block(in_channels, features, name):
@@ -151,21 +151,22 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         self.s = s
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
-        self.m = torch.nn.AvgPool2d(2, 2)
+        self.m = torch.nn.AvgPool2d(4, 4)
         self.resize = Resize((input_size[0], input_size[1]))
-        self.normalize = Normalize(mean=(0.781, 0.781, 0.781), std=(0.201, 0.201, 0.201))
+        # self.normalize = Normalize(mean=(0.781, 0.781, 0.781), std=(0.201, 0.201, 0.201))
 
         self.Sc: Tensor
         self.mu: Tensor
 
     def forward(self, input_tensor: Tensor) -> Tensor:
-        input_tensor = self.normalize(input_tensor)
+        # input_tensor = self.normalize(input_tensor)
         with torch.no_grad():
             features = self.feature_extractor(input_tensor)
 
         sc = self.Sc
         mu = torch.t(self.mu)
 
+        # embeddings = [self.m(feature) for feature in features]
         embeddings = [self.m(feature) for feature in features]
 
         embedding_ = embedding_concat(embeddings[0], embeddings[1], self.s).to(self.Sc.device)
@@ -178,12 +179,14 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
 
         temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0], 1, 1)
 
-        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch), torch.linalg.pinv(temp))
+        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch),
+                               torch.linalg.pinv(temp)
+                               )
         q_hat_batch = torch.matmul(w_batch, sc)
 
         score_patches_batch = torch.abs(q_batch - q_hat_batch)
         score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
-        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-1],
+        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-2],
                                                              embedding_.shape[-1])
         anomaly_map_resized_batch = self.resize(anomaly_map_batch).unsqueeze(1)
 
@@ -196,3 +199,4 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
 
         return anomaly_map_resized_batch_normal
+
