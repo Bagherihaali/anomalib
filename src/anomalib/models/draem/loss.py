@@ -14,11 +14,11 @@ class DraemLoss(nn.Module):
     image, and the Structural Similarity loss between the predicted and GT anomaly masks.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, focal_alpha=1, focal_gamma=2) -> None:
         super().__init__()
 
         self.l2_loss = nn.modules.loss.MSELoss()
-        self.focal_loss = FocalLoss(alpha=1, reduction="mean")
+        self.focal_loss = FocalLoss(alpha=focal_alpha, gamma=focal_gamma, reduction="mean")
         self.ssim_loss = SSIMLoss(window_size=11)
 
     def forward(self, input_image: Tensor, reconstruction: Tensor, anomaly_mask: Tensor, prediction: Tensor) -> Tensor:
@@ -26,4 +26,4 @@ class DraemLoss(nn.Module):
         l2_loss_val = self.l2_loss(reconstruction, input_image)
         focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
         ssim_loss_val = self.ssim_loss(reconstruction, input_image) * 2
-        return l2_loss_val + ssim_loss_val + focal_loss_val
+        return l2_loss_val + ssim_loss_val + focal_loss_val, [l2_loss_val, ssim_loss_val, focal_loss_val]

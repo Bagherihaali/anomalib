@@ -36,14 +36,18 @@ class Draem(AnomalyModule):
             self,
             enable_sspcab: bool = False,
             sspcab_lambda: float = 0.1,
+            focal_alpha=1,
+            focal_gamma=2,
             anomaly_source_path: str | None = None,
             beta: float | tuple[float, float] = (0.1, 1.0),
+            rec_base_width=64,
+            disc_base_width=16
     ) -> None:
         super().__init__()
 
         self.augmenter = Augmenter(anomaly_source_path, beta=beta)
-        self.model = DraemModel(sspcab=enable_sspcab)
-        self.loss = DraemLoss()
+        self.model = DraemModel(sspcab=enable_sspcab, rec_base_width=rec_base_width, disc_base_width=disc_base_width)
+        self.loss = DraemLoss(focal_alpha=focal_alpha, focal_gamma=focal_gamma)
         self.sspcab = enable_sspcab
         self.removable_handles = {}
 
@@ -97,12 +101,15 @@ class Draem(AnomalyModule):
         # Generate model prediction
         reconstruction, prediction = self.model(augmented_image)
         # Compute loss
-        loss = self.loss(input_image, reconstruction, anomaly_mask, prediction)
+        loss, loss_list = self.loss(input_image, reconstruction, anomaly_mask, prediction)
 
         if self.sspcab:
             loss += self.sspcab_lambda * self.sspcab_loss(
                 self.sspcab_activations["input"], self.sspcab_activations["output"]
             )
+        self.log("l2_loss", loss_list[0].item(),  on_epoch=True, prog_bar=False, logger=True)
+        self.log("ssim_loss", loss_list[1].item(),  on_epoch=True, prog_bar=False, logger=True)
+        self.log("focal_loss", loss_list[2].item(),  on_epoch=True, prog_bar=False, logger=True)
 
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
         batch['visualization'] = {

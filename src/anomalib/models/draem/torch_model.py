@@ -20,10 +20,12 @@ from anomalib.models.components.layers import SSPCAB
 class DraemModel(nn.Module):
     """DRAEM PyTorch model consisting of the reconstructive and discriminative sub networks."""
 
-    def __init__(self, sspcab: bool = False) -> None:
+    def __init__(self, sspcab: bool = False, rec_base_width=64, disc_base_width=16) -> None:
         super().__init__()
-        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=sspcab)
-        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=2, out_channels=2)
+        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=sspcab,
+                                                                  base_width=rec_base_width)
+        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=2, out_channels=2,
+                                                                  base_width=disc_base_width)
 
     def forward(self, batch: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         """Compute the reconstruction and anomaly mask from an input image.
