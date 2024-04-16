@@ -14,6 +14,7 @@ class TeacherNet(nn.Module):
             pretrained=True,
             features_only=True,
             out_indices=[1, 2, 3],
+
         )
         # freeze teacher model
         for param in self.parameters():
@@ -47,6 +48,7 @@ class StudentNet(nn.Module):
             pretrained=False,
             features_only=True,
             out_indices=[1, 2, 3, 4],
+
         )
 
     def forward(self, x):
@@ -115,7 +117,8 @@ class DeSTSegModel(nn.Module):
             [
                 F.interpolate(
                     -output_t * output_s,
-                    size=outputs_student_aug[0].size()[2:],
+                    # size=outputs_student_aug[0].size()[2:],
+                    size=img_origin.size()[2:],
                     mode="bilinear",
                     align_corners=False,
                 )

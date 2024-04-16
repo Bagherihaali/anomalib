@@ -39,6 +39,7 @@ class DestSeg(AnomalyModule):
     def training_step(self, batch: dict[str, str | Tensor]) -> STEP_OUTPUT:
 
         de_st_optimizer, seg_optimizer = self.optimizers()
+        de_st_scheduler, seg_scheduler = self.lr_schedulers()
         de_st_optimizer.zero_grad()
         seg_optimizer.zero_grad()
 
@@ -55,6 +56,7 @@ class DestSeg(AnomalyModule):
             img_aug, input_image
         )
 
+        # in some settings segmentation output and gt mask shapes may differ
         mask = F.interpolate(
             mask,
             size=output_segmentation.size()[2:],
@@ -73,11 +75,13 @@ class DestSeg(AnomalyModule):
             loss = cosine_loss_val
             self.manual_backward(loss)
             de_st_optimizer.step()
+            de_st_scheduler.step()
 
         else:
             loss = focal_loss_val + l1_loss_val
             self.manual_backward(loss)
             seg_optimizer.step()
+            seg_scheduler.step()
 
         self.log("cosine_loss", cosine_loss_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
         self.log("focal_loss", focal_loss_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
