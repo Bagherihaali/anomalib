@@ -9,11 +9,16 @@ from collections import OrderedDict
 from anomalib.models.components import DynamicBufferModule
 
 
-def embedding_concat(x:Tensor, y:Tensor, s:int):
+def embedding_concat(x: Tensor, y: Tensor, s: int):
     # from https://github.com/xiahaifeng1995/PaDiM-Anomaly-Detection-Localization-master
     z = torch.cat((x, y.repeat_interleave(s, dim=2).repeat_interleave(s, dim=3)), dim=1)
 
     return z
+
+
+def pool_embeddings(pool, features, map_ids):
+    embeddings = [pool(feature) if i in map_ids else feature for i, feature in enumerate(features)]
+    return embeddings
 
 
 class UNet(nn.Module):
@@ -118,6 +123,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             backbone: str = 'wide_resnet50',
             lambda_value: int = 2,
             m=None,
+            maps_to_pool=None
     ):
         super().__init__()
         self.input_size = input_size
@@ -127,7 +133,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         self.m = m
         self.features = []
         self.feature_extractor = None
-
+        self.maps_to_pool = maps_to_pool
         # self.init_feature_extractor()
 
         self.register_buffer("Sc", Tensor())
@@ -175,7 +181,8 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         mu = torch.t(self.mu)
         features = self.features
 
-        embeddings = [self.m(feature) for feature in features]
+        # embeddings = [self.m(feature) for feature in features]
+        embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
 
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
         embedding_ = embedding_concat(embeddings[0], embeddings[1], s).to(self.Sc.device)
@@ -193,7 +200,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         score_patches_batch = torch.abs(q_batch - q_hat_batch)
         score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
-        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-1],
+        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-2],
                                                              embedding_.shape[-1])
         anomaly_map_resized_batch = Resize((self.input_size[0], self.input_size[1]))(
             anomaly_map_batch).unsqueeze(1)

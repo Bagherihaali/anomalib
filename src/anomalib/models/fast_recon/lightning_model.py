@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 # from anomalib.models.fast_recon.kcenter_greedy import KCenterGreedy
 from anomalib.models.components import KCenterGreedy
 from anomalib.models.components import AnomalyModule
-from anomalib.models.fast_recon.torch_model import FastReconModel, embedding_concat
+from anomalib.models.fast_recon.torch_model import FastReconModel, embedding_concat, pool_embeddings
 
 __all__ = ["FastRecon"]
 
@@ -22,21 +22,24 @@ class FastRecon(AnomalyModule):
                  input_size: tuple[int, int] = (256, 256),
                  coreset_sampling_ratio: int = 0.01,
                  lambda_value: int = 2,
-                 backbone: str = 'wide_resnet50'
+                 backbone: str = 'wide_resnet50',
+                 m: torch.nn.AvgPool2d = torch.nn.AvgPool2d(4, 4),
+                 maps_to_pool: tuple = (0, 1),
                  ):
         super(FastRecon, self).__init__()
 
         self.layers = layers
         self.backbone = backbone
         self.lambda_value = lambda_value
-        self.m = torch.nn.AvgPool2d(4, 4)
+        self.m = m
+        self.maps_to_pool = maps_to_pool
 
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []
 
-        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m)
+        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m, self.maps_to_pool)
         self.model.init_feature_extractor()
         self.model.feature_extractor.to(self.device)
 
@@ -47,7 +50,8 @@ class FastRecon(AnomalyModule):
     def training_step(self, batch, batch_idx):
         features = self.model(batch["image"])
 
-        embeddings = [self.m(feature) for feature in features]
+        # embeddings = [self.m(feature) for i, feature in enumerate(features) if i in self.maps_to_pool]
+        embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
 
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
 
