@@ -172,9 +172,11 @@ class Augmenter:
             anomaly_source_path: str | None = None,
             p_anomalous: float = 0.5,
             beta: float | tuple[float, float] = (0.2, 1.0),
+            perlin_scale: int | tuple[int, int] = (0, 6),
     ):
         self.p_anomalous = p_anomalous
         self.beta = beta
+        self.perlin_scale = perlin_scale
 
         self.anomaly_source_paths = []
         if anomaly_source_path is not None:
@@ -220,15 +222,15 @@ class Augmenter:
             Image containing a random anomalous perturbation, and the corresponding ground truth anomaly mask.
         """
         # Generate random perlin noise
-        perlin_scale = 6
-        min_perlin_scale = 0
+        perlin_scale = self.perlin_scale[1]
+        min_perlin_scale = self.perlin_scale[0]
 
         perlin_scalex = 2 ** random.randint(min_perlin_scale, perlin_scale)  # nosec: B311
         perlin_scaley = 2 ** random.randint(min_perlin_scale, perlin_scale)  # nosec: B311
 
-        perlin_noise = random_2d_perlin((nextpow2(height), nextpow2(width)), (perlin_scalex, perlin_scaley))[
-                       :height, :width
-                       ]
+        perlin_noise = random_2d_perlin(
+            (nextpow2(height), nextpow2(width)),
+            (perlin_scalex, perlin_scaley))[:height, :width]
         perlin_noise = self.rot(image=perlin_noise)
 
         # Create mask from perlin noise
