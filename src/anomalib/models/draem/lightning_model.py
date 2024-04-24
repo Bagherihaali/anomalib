@@ -40,14 +40,18 @@ class Draem(AnomalyModule):
             focal_gamma=2,
             anomaly_source_path: str | None = None,
             beta: float | tuple[float, float] = (0.1, 1.0),
+            perlin_scale: int | tuple[int, int] = (0, 6),
             rec_base_width=64,
-            disc_base_width=16
+            disc_base_width=16,
+            l1_loss: bool = False,
+            p_anomalous: float = 0.5
+
     ) -> None:
         super().__init__()
 
-        self.augmenter = Augmenter(anomaly_source_path, beta=beta)
+        self.augmenter = Augmenter(anomaly_source_path, beta=beta, perlin_scale=perlin_scale, p_anomalous=p_anomalous)
         self.model = DraemModel(sspcab=enable_sspcab, rec_base_width=rec_base_width, disc_base_width=disc_base_width)
-        self.loss = DraemLoss(focal_alpha=focal_alpha, focal_gamma=focal_gamma)
+        self.loss = DraemLoss(focal_alpha=focal_alpha, focal_gamma=focal_gamma, l1_loss=l1_loss)
         self.sspcab = enable_sspcab
         self.removable_handles = {}
 
@@ -107,9 +111,9 @@ class Draem(AnomalyModule):
             loss += self.sspcab_lambda * self.sspcab_loss(
                 self.sspcab_activations["input"], self.sspcab_activations["output"]
             )
-        self.log("l2_loss", loss_list[0].item(),  on_epoch=True, prog_bar=False, logger=True)
-        self.log("ssim_loss", loss_list[1].item(),  on_epoch=True, prog_bar=False, logger=True)
-        self.log("focal_loss", loss_list[2].item(),  on_epoch=True, prog_bar=False, logger=True)
+        self.log("l_loss", loss_list[0].item(), on_epoch=True, prog_bar=False, logger=True)
+        self.log("ssim_loss", loss_list[1].item(), on_epoch=True, prog_bar=False, logger=True)
+        self.log("focal_loss", loss_list[2].item(), on_epoch=True, prog_bar=False, logger=True)
 
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
         batch['visualization'] = {
