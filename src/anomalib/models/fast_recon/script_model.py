@@ -175,9 +175,6 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         sc = self.Sc
         mu = torch.t(self.mu)
 
-        # embeddings = [self.m(feature) for feature in features]
-        # embeddings = [self.m(feature) for feature in features]
-
         embeddings = []
         for i, feature in enumerate(features):
             if i in self.maps_to_pool:
