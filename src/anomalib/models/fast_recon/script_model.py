@@ -8,7 +8,13 @@ from torch.nn import functional as F
 from collections import OrderedDict
 from typing import Tuple
 from abc import ABC
-from anomalib.models.fast_recon.torch_model import embedding_concat
+from anomalib.models.fast_recon.torch_model import embedding_concat, pool_embeddings
+
+'''
+Attention!!!
+We will use these classes for exporting models using jit trace and script, so we must not use Inheritance or 
+multiple python package imports, because of that we have added some class definitions right in this python file 
+'''
 
 
 class DynamicBufferModule(ABC, nn.Module):
@@ -55,39 +61,39 @@ class DynamicBufferModule(ABC, nn.Module):
         super()._load_from_state_dict(state_dict, prefix, *args)
 
 
-class UNet(nn.Module):
+class UNetForScript(nn.Module):
 
     def __init__(self, in_channels=3, out_channels=1, init_features=32):
-        super(UNet, self).__init__()
+        super().__init__()
 
         features = init_features
-        self.encoder1 = UNet._block(in_channels, features, name="enc1")
+        self.encoder1 = UNetForScript._block(in_channels, features, name="enc1")
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder2 = UNet._block(features, features * 2, name="enc2")
+        self.encoder2 = UNetForScript._block(features, features * 2, name="enc2")
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder3 = UNet._block(features * 2, features * 4, name="enc3")
+        self.encoder3 = UNetForScript._block(features * 2, features * 4, name="enc3")
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.encoder4 = UNet._block(features * 4, features * 8, name="enc4")
+        self.encoder4 = UNetForScript._block(features * 4, features * 8, name="enc4")
         self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.bottleneck = UNet._block(features * 8, features * 16, name="bottleneck")
+        self.bottleneck = UNetForScript._block(features * 8, features * 16, name="bottleneck")
 
         self.upconv4 = nn.ConvTranspose2d(
             features * 16, features * 8, kernel_size=2, stride=2
         )
-        self.decoder4 = UNet._block((features * 8) * 2, features * 8, name="dec4")
+        self.decoder4 = UNetForScript._block((features * 8) * 2, features * 8, name="dec4")
         self.upconv3 = nn.ConvTranspose2d(
             features * 8, features * 4, kernel_size=2, stride=2
         )
-        self.decoder3 = UNet._block((features * 4) * 2, features * 4, name="dec3")
+        self.decoder3 = UNetForScript._block((features * 4) * 2, features * 4, name="dec3")
         self.upconv2 = nn.ConvTranspose2d(
             features * 4, features * 2, kernel_size=2, stride=2
         )
-        self.decoder2 = UNet._block((features * 2) * 2, features * 2, name="dec2")
+        self.decoder2 = UNetForScript._block((features * 2) * 2, features * 2, name="dec2")
         self.upconv1 = nn.ConvTranspose2d(
             features * 2, features, kernel_size=2, stride=2
         )
-        self.decoder1 = UNet._block(features * 2, features, name="dec1")
+        self.decoder1 = UNetForScript._block(features * 2, features, name="dec1")
 
         self.conv = nn.Conv2d(
             in_channels=features, out_channels=out_channels, kernel_size=1
@@ -97,9 +103,9 @@ class UNet(nn.Module):
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
-        # enc4 = self.encoder4(self.pool3(enc3))
+        enc4 = self.encoder4(self.pool3(enc3))
 
-        return enc2, enc3
+        return enc1, enc4
 
     @staticmethod
     def _block(in_channels, features, name):
@@ -139,27 +145,30 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
     def __init__(
             self,
             input_size: tuple[int, int] = [1024, 1024],
-            feature_extractor: UNet = None,
+            feature_extractor: UNetForScript = None,
             lambda_value: int = 2,
-            s: int = 2
+            m=None,
+            maps_to_pool=None,
+            # s: int = 2
     ):
         super().__init__()
         self.input_size = input_size
 
         self.lambda_value = lambda_value
         self.feature_extractor = feature_extractor
-        self.s = s
+        # self.s = s
+        self.m = m
+        self.maps_to_pool = maps_to_pool
+
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
-        self.m = torch.nn.AvgPool2d(4, 4)
+
         self.resize = Resize((input_size[0], input_size[1]))
-        # self.normalize = Normalize(mean=(0.781, 0.781, 0.781), std=(0.201, 0.201, 0.201))
 
         self.Sc: Tensor
         self.mu: Tensor
 
     def forward(self, input_tensor: Tensor) -> Tensor:
-        # input_tensor = self.normalize(input_tensor)
         with torch.no_grad():
             features = self.feature_extractor(input_tensor)
 
@@ -167,9 +176,17 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         mu = torch.t(self.mu)
 
         # embeddings = [self.m(feature) for feature in features]
-        embeddings = [self.m(feature) for feature in features]
+        # embeddings = [self.m(feature) for feature in features]
 
-        embedding_ = embedding_concat(embeddings[0], embeddings[1], self.s).to(self.Sc.device)
+        embeddings = []
+        for i, feature in enumerate(features):
+            if i in self.maps_to_pool:
+                embeddings.append(self.m(feature))
+            else:
+                embeddings.append(feature)
+
+        s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
+        embedding_ = embedding_concat(embeddings[0], embeddings[1], s).to(self.Sc.device)
         total_embedding = embedding_.permute(0, 2, 3, 1).contiguous().to(self.Sc.device)
 
         lamda = self.lambda_value
@@ -199,4 +216,3 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
 
         return anomaly_map_resized_batch_normal
-

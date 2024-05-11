@@ -134,7 +134,6 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         self.features = []
         self.feature_extractor = None
         self.maps_to_pool = maps_to_pool
-        # self.init_feature_extractor()
 
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
@@ -181,7 +180,6 @@ class FastReconModel(DynamicBufferModule, nn.Module):
         mu = torch.t(self.mu)
         features = self.features
 
-        # embeddings = [self.m(feature) for feature in features]
         embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
 
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
