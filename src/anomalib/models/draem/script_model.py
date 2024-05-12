@@ -91,8 +91,8 @@ class DraemModelScript(nn.Module):
 
     def __init__(self, sspcab: bool = False) -> None:
         super().__init__()
-        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=3, out_channels=3, sspcab=sspcab)
-        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=6, out_channels=2)
+        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=sspcab)
+        self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=2, out_channels=2)
 
     def forward(self, batch: Tensor):
         """Compute the reconstruction and anomaly mask from an input image.
