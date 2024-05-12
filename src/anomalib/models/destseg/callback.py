@@ -47,7 +47,9 @@ class TrainingVisualizer(Callback):
         visualisation = batch['visualization']
         row_num = len(batch['visualization'].keys())
 
-        image_height, image_width = 128, 128
+        org_image_height, org_image_width = batch['image'].shape[-2], batch['image'].shape[-1]
+        min_dim = min(org_image_width, org_image_height)
+        image_height, image_width = int(org_image_height / (min_dim / 128)), int(org_image_width / (min_dim / 128))
         margin_size = 30
         final_image = np.ones((margin_size + row_num * (image_height + margin_size),
                                margin_size + batch_size * (image_width + margin_size), 3), dtype=np.uint8) * 255
@@ -62,7 +64,7 @@ class TrainingVisualizer(Callback):
                 img = np.uint8(img)
                 if img.shape[2] == 1:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-                img = cv2.resize(img, (image_height, image_width))
+                img = cv2.resize(img, (image_width, image_height))
 
                 image_with_margin = np.ones((image_height + margin_size,
                                              image_width + margin_size, 3), dtype=np.uint8) * 255
