@@ -44,13 +44,15 @@ class Draem(AnomalyModule):
             rec_base_width=64,
             disc_base_width=16,
             l1_loss: bool = False,
-            p_anomalous: float = 0.5
+            p_anomalous: float = 0.5,
+            freeze_disc=False,
 
     ) -> None:
         super().__init__()
 
         self.augmenter = Augmenter(anomaly_source_path, beta=beta, perlin_scale=perlin_scale, p_anomalous=p_anomalous)
-        self.model = DraemModel(sspcab=enable_sspcab, rec_base_width=rec_base_width, disc_base_width=disc_base_width)
+        self.model = DraemModel(sspcab=enable_sspcab, rec_base_width=rec_base_width, disc_base_width=disc_base_width,
+                                freeze_disc=freeze_disc)
         self.loss = DraemLoss(focal_alpha=focal_alpha, focal_gamma=focal_gamma, l1_loss=l1_loss)
         self.sspcab = enable_sspcab
         self.removable_handles = {}
@@ -139,7 +141,16 @@ class Draem(AnomalyModule):
 
         batch["image"] = batch["image"][:, 1, :, :].unsqueeze(1)  # make images monochrome
 
-        prediction = self.model(batch["image"])
+        # prediction = self.model(batch["image"])
+
+        prediction, reconstruction = self.model(batch["image"])
+        # Compute loss
+        loss, loss_list = self.loss(batch["image"], reconstruction, anomaly_mask=None, prediction=None)
+
+        self.log("val_l_loss", loss_list[0].item(), on_epoch=True, prog_bar=False, logger=True)
+        self.log("val_ssim_loss", loss_list[1].item(), on_epoch=True, prog_bar=False, logger=True)
+
+        self.log("val_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
 
         batch["anomaly_maps"] = prediction
         batch['visualization'] = {
