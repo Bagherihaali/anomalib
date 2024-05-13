@@ -156,6 +156,8 @@ class Draem(AnomalyModule):
         batch['visualization'] = {
             'input_image': batch["image"],
             'anomaly_maps': prediction,
+            'reconstruction': reconstruction
+
         }
         return batch
 
