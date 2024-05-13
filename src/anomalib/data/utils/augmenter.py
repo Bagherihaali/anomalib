@@ -182,6 +182,9 @@ class Augmenter:
         if anomaly_source_path is not None:
             for img_ext in IMG_EXTENSIONS:
                 self.anomaly_source_paths.extend(glob.glob(anomaly_source_path + "/**/*" + img_ext, recursive=True))
+        self.anomaly_source = []
+        for source in self.anomaly_source_paths:
+            self.anomaly_source.append(cv2.imread(source))
 
         self.augmenters = [
             iaa.GammaContrast((0.5, 2.0), per_channel=True),
@@ -238,8 +241,8 @@ class Augmenter:
         mask = np.expand_dims(mask, axis=2).astype(np.float32)
 
         # Load anomaly source image
-        if anomaly_source_path:
-            anomaly_source_img = cv2.imread(anomaly_source_path)
+        if anomaly_source_path is not None:
+            anomaly_source_img = anomaly_source_path
             anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(width, height))
 
         else:  # if no anomaly source is specified, we use the perlin noise as anomalous source
@@ -278,10 +281,11 @@ class Augmenter:
                 perturbations_list.append(torch.zeros((channels, height, width)))
                 masks_list.append(torch.zeros((1, height, width)))
             else:
-                anomaly_source_path = (
-                    random.sample(self.anomaly_source_paths, 1)[0] if len(self.anomaly_source_paths) > 0 else None
+                anomaly_source = (
+                    random.sample(self.anomaly_source, 1)[0] if len(self.anomaly_source) > 0 else None
                 )
-                perturbation, mask = self.generate_perturbation(height, width, anomaly_source_path)
+                perturbation, mask = self.generate_perturbation(height, width, anomaly_source)
+
                 perturbations_list.append(Tensor(perturbation).permute((2, 0, 1)))
                 masks_list.append(Tensor(mask).permute((2, 0, 1)))
 
