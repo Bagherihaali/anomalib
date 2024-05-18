@@ -52,22 +52,19 @@ class Fair(AnomalyModule):
         del args, kwargs  # These variables are not used.
 
         input_image = batch["image"]
+
+        if self.in_channels == 1:
+            input_image = input_image[:, 1, :, :].unsqueeze(1)
+
         _, gray_grayimage = self.augmenter.augment_batch(input_image, mode='train')
         gray_rec = self.model(gray_grayimage)
 
-        # Compute loss in gray scale mode
-        # loss = self.loss(rgb_to_grayscale(gray_rec), rgb_to_grayscale(input_image))
-
-        # Compute loss
-        if self.out_channels == 1:
-            loss = self.loss(gray_rec, rgb_to_grayscale(input_image))
-        else:
-            loss = self.loss(gray_rec, input_image)
+        loss = self.loss(input_image, gray_rec)
 
         self.log("l2_loss", self.loss.l2_loss_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
         self.log("ssim_loss", self.loss.ssim_los_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
-
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True, on_step=False)
+
         batch['visualization'] = {
             "mask": batch["mask"],
             'input_image': input_image,
@@ -82,26 +79,35 @@ class Fair(AnomalyModule):
 
         msgms = MSGMSLoss()
         input_image = batch["image"]
+
+        if self.in_channels == 1:
+            input_image = input_image[:, 1, :, :].unsqueeze(1)
+
         _, gray_grayimage = self.augmenter.augment_batch(input_image, mode='test')
 
         gray_rec = self.model(gray_grayimage)
+
+        loss = self.loss(input_image, gray_rec)
+
+        self.log("val_l2_loss", self.loss.l2_loss_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
+        self.log("val_ssim_loss", self.loss.ssim_los_val.item(), on_epoch=True, prog_bar=False, logger=True, on_step=False)
+        self.log("val_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True, on_step=False)
+
         prediction = []
         for i in range(gray_rec.shape[0]):
             if self.out_channels == 1:
                 rec_rgb = kornia.color.grayscale_to_rgb(gray_rec[i].unsqueeze(0))
-                rec_lab = kornia.color.rgb_to_lab(rec_rgb)
-            else:
-                rec_lab = kornia.color.rgb_to_lab(gray_rec[i].unsqueeze(0))
-            ori_lab = kornia.color.rgb_to_lab(input_image[i].unsqueeze(0))
+            if self.in_channels == 1:
+                orig_rgb = kornia.color.grayscale_to_rgb(input_image[i].unsqueeze(0))
+
+            rec_lab = kornia.color.rgb_to_lab(rec_rgb)
+            ori_lab = kornia.color.rgb_to_lab(orig_rgb)
 
             colordif = (ori_lab - rec_lab) * (ori_lab - rec_lab)
             colorresult = colordif[:, 1, :, :] + colordif[:, 2, :, :]
             colorresult = colorresult[None, :, :, :] * 0.0003
 
-            if self.out_channels == 1:
-                out_map = msgms(rec_rgb, input_image[i].unsqueeze(0), as_loss=False) + colorresult
-            else:
-                out_map = msgms(gray_rec[i].unsqueeze(0), input_image[i].unsqueeze(0), as_loss=False) + colorresult
+            out_map = msgms(rec_rgb, orig_rgb, as_loss=False) + colorresult
 
             out_mask_averaged = mean_smoothing(out_map, 21)
             pred = out_mask_averaged[0, 0, :, :]
