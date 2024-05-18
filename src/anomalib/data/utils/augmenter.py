@@ -130,14 +130,15 @@ def rgb_to_grayscale(image_tensor):
 
 
 def to_fair(auggray):
-    auggray = auggray.squeeze()
+    # auggray = auggray.squeeze()
 
     # FFT
     f = torch.fft.fft2(auggray)
     fshift = torch.fft.fftshift(f)
 
     # BHPF
-    rows, cols = auggray.shape
+    channels, rows, cols = auggray.shape
+
     crow, ccol = rows // 2, cols // 2
     d = 30  # cutoff frequency
     n = 2  # BHPF order
@@ -152,7 +153,7 @@ def to_fair(auggray):
     image_filtered = torch.fft.ifft2(f_ishift)
     auggray = torch.real(image_filtered).float()
 
-    auggray = auggray.unsqueeze(0)
+    # auggray = auggray.unsqueeze(0)
 
     return auggray
 
@@ -313,7 +314,9 @@ class FairAugmenter:
     ) -> None:
         if anomaly_source_path is not None:
             self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path + "/*/*.jpg"))
-
+        self.anomaly_source = []
+        for source in self.anomaly_source_paths:
+            self.anomaly_source.append(cv2.imread(source))
         self.image_augmenters = [
             alb.ElasticTransform(alpha=200, sigma=12, alpha_affine=1,always_apply=True),
             alb.OpticalDistortion(distort_limit=.25, shift_limit=0.05, always_apply=True),
@@ -336,7 +339,7 @@ class FairAugmenter:
             alb.Affine(rotate=(-45, 45), interpolation=3, always_apply=True, p=1.0),
             alb.Affine(scale=(0.2, 0.7), interpolation=3, always_apply=True, p=1.0),
         ]
-        # self.rot = iaa.Sequential([iaa.Affine(rotate=(-15, 15))])
+
         self.rot = alb.Affine(rotate=(-1, 1), interpolation=3, always_apply=True, p=1.0)
 
     def augment_batch(self, batch: Tensor, mode: str) -> tuple[Tensor, Tensor]:
@@ -348,9 +351,10 @@ class FairAugmenter:
         auggrays = []
         for i in range(batch_size):
             if mode == 'train':
-                anomaly_source_path = random.sample(self.anomaly_source_paths, 1)[0] if len(
-                    self.anomaly_source_paths) > 0 else None
-                image, auggray = self.transform_image(batch[i], anomaly_source_path)
+
+                anomaly_source = random.sample(self.anomaly_source, 1)[0] if len(
+                    self.anomaly_source) > 0 else None
+                image, auggray = self.transform_image(batch[i], anomaly_source)
                 images.append(image)
                 auggrays.append(auggray)
             else:
@@ -364,29 +368,25 @@ class FairAugmenter:
         return images, auggray
 
     def transform_test_image(self, image):
-
-        imagegray = rgb_to_grayscale(image)
-        imagegray = to_fair(imagegray)
+        imagegray = to_fair(image)
 
         return image, imagegray
 
-    def transform_image(self, image, anomaly_source_path):
+    def transform_image(self, image, anomaly_source):
 
         do_aug_orig = torch.rand(1).item() > 0.8
         if do_aug_orig:
             # image = self.rot(image=image)
-            angle = random.choice([90, -90])
+            angle = random.choice([180, -180])
             image = TF.rotate(image, angle)
 
         what_anomaly = torch.rand(1).item()
-        if what_anomaly > 0.7:
+        if what_anomaly > 1:
             augmented_image = self.augment_cutpaste(image)
         else:
-            augmented_image = self.augment_image(image, anomaly_source_path)
+            augmented_image = self.augment_image(image, anomaly_source)
 
-        auggray = rgb_to_grayscale(augmented_image)
-
-        auggray = to_fair(auggray)
+        auggray = to_fair(augmented_image)
 
         return image, auggray
 
@@ -403,24 +403,26 @@ class FairAugmenter:
         aug = alb.Compose([self.image_augmenters[aug_ind[0]]])
         return aug
 
-    def augment_image(self, image, anomaly_source_path):
+    def augment_image(self, image, anomaly_source):
 
         image = image.cpu().numpy().transpose(1, 2, 0)
         aug = self.rand_augmenter()
         image_aug = self.image_rand_augmenter()
         perlin_scale = 6
-        min_perlin_scale = 0
+        min_perlin_scale = 4
 
         aug_source = torch.rand(1).numpy()[0]
 
-        if aug_source > 0.9999:
+        if aug_source >= 0.5:
             augmented_image = image_aug(image=image)['image']
             final_image = augmented_image.astype(np.float32)
 
         else:
-            anomaly_source_img = cv2.imread(anomaly_source_path)
-            anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[0], image.shape[1]))
-
+            anomaly_source_img = anomaly_source
+            anomaly_source_img = cv2.resize(anomaly_source_img, dsize=(image.shape[1], image.shape[0]))
+            if image.shape[-1] == 1:
+                anomaly_source_img = cv2.cvtColor(anomaly_source_img, cv2.COLOR_RGB2GRAY)
+                anomaly_source_img = np.expand_dims(anomaly_source_img, axis=-1)
             anomaly_augmented = aug(image=anomaly_source_img)['image']
 
             perlin_scalex = 2 ** (torch.randint(min_perlin_scale, perlin_scale, (1,)).numpy()[0])
