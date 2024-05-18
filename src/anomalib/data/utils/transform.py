@@ -141,7 +141,7 @@ def get_transforms(
         elif normalization == InputNormalizationMethod.NONE:
             transforms_list.append(A.ToFloat(max_value=255))
         elif normalization == InputNormalizationMethod.SHOGA:
-            transforms_list.append(A.Normalize(mean=(0.781, 0.781, 0.781), std=(0.201, 0.201, 0.201)))
+            transforms_list.append(A.Normalize(mean=(0.619, 0.619, 0.619), std=(0.310, 0.310, 0.310)))
         elif normalization == InputNormalizationMethod.SHOGA_METAL:
             transforms_list.append(A.Normalize(mean=(0.744, 0.744, 0.744), std=(0.01, 0.01, 0.01)))
         else:
