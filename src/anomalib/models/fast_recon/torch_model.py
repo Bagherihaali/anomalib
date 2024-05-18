@@ -123,12 +123,14 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             backbone: str = 'wide_resnet50',
             lambda_value: int = 2,
             m=None,
-            maps_to_pool=None
+            maps_to_pool=None,
+            backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation-pytorch_master\weights\unet.pt'
     ):
         super().__init__()
         self.input_size = input_size
         self.layers = layers
         self.backbone = backbone
+        self.backbone_path = backbone_path
         self.lambda_value = lambda_value
         self.m = m
         self.features = []
@@ -147,8 +149,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
                                                     weights=Wide_ResNet50_2_Weights.DEFAULT)
         elif self.backbone == 'unet':
             self.feature_extractor = UNet(in_channels=3, out_channels=1, init_features=32)
-            weights = torch.load(
-                r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation-pytorch_master\weights\unet.pt')
+            weights = torch.load(self.backbone_path)
             self.feature_extractor.load_state_dict(weights)
 
         def hook_t(module, input, output):

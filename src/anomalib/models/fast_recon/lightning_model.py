@@ -25,11 +25,14 @@ class FastRecon(AnomalyModule):
                  backbone: str = 'wide_resnet50',
                  m: torch.nn.AvgPool2d = torch.nn.AvgPool2d(4, 4),
                  maps_to_pool: tuple = (0, 1),
+                 backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation'
+                                      r'-pytorch_master\weights\unet.pt'
                  ):
         super(FastRecon, self).__init__()
 
         self.layers = layers
         self.backbone = backbone
+        self.backbone_path = backbone_path
         self.lambda_value = lambda_value
         self.m = m
         self.maps_to_pool = maps_to_pool
@@ -39,7 +42,8 @@ class FastRecon(AnomalyModule):
 
         self.embedding_temp = []
 
-        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m, self.maps_to_pool)
+        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m,
+                                    self.maps_to_pool, self.backbone_path)
         self.model.init_feature_extractor()
         self.model.feature_extractor.to(self.device)
 
@@ -50,7 +54,6 @@ class FastRecon(AnomalyModule):
     def training_step(self, batch, batch_idx):
         features = self.model(batch["image"])
 
-        # embeddings = [self.m(feature) for i, feature in enumerate(features) if i in self.maps_to_pool]
         embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
 
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
