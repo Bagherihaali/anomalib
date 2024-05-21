@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import os
 
+from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from torchvision.models import Wide_ResNet50_2_Weights
 from torch.nn import functional as F
 from sklearn.random_projection import SparseRandomProjection
@@ -26,7 +27,8 @@ class FastRecon(AnomalyModule):
                  m: torch.nn.AvgPool2d = torch.nn.AvgPool2d(4, 4),
                  maps_to_pool: tuple = (0, 1),
                  backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation'
-                                      r'-pytorch_master\weights\unet.pt'
+                                      r'-pytorch_master\weights\unet.pt',
+                 script_mode: bool = False
                  ):
         super(FastRecon, self).__init__()
 
@@ -36,6 +38,7 @@ class FastRecon(AnomalyModule):
         self.lambda_value = lambda_value
         self.m = m
         self.maps_to_pool = maps_to_pool
+        self.script_mode = script_mode
 
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
@@ -55,10 +58,14 @@ class FastRecon(AnomalyModule):
         features = self.model(batch["image"])
 
         embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
-
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
-
         self.embedding_temp.extend(embedding_concat(embeddings[0], embeddings[1], s))
+
+        if self.script_mode:
+            progress = ((batch_idx + 1) / len(self.train_dataloader())) * 100
+            if int(progress) == 100:
+                print(f'\rPhase one: {progress:.1f}%')
+            print(f'\rPhase one: {progress:.1f}%', end='', flush=True)
 
     def on_validation_start(self):
         del self.model.feature_extractor
