@@ -149,7 +149,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
                                                     weights=Wide_ResNet50_2_Weights.DEFAULT)
         elif self.backbone == 'unet':
             self.feature_extractor = UNet(in_channels=3, out_channels=1, init_features=32)
-            weights = torch.load(self.backbone_path)
+            weights = torch.load(self.backbone_path, map_location=self.mu.device)
             self.feature_extractor.load_state_dict(weights)
 
         def hook_t(module, input, output):
