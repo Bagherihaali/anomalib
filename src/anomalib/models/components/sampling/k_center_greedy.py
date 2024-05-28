@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -101,7 +103,14 @@ class KCenterGreedy:
 
         selected_coreset_idxs: list[int] = []
         idx = int(torch.randint(high=self.n_observations, size=(1,)).item())
-        for _ in tqdm(range(self.coreset_size), "Selecting Coreset Indices.", position=0, leave=True):
+
+        l_bar = '{desc}: {percentage:3.0f}% |'
+        r_bar = '| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, ' '{rate_fmt}{postfix}]'
+        bar = '{bar}'
+        bar_format = F'{l_bar}{bar}{r_bar}'
+
+        for _ in tqdm(range(self.coreset_size), "Selecting Coreset Indices.", position=0, leave=True, file=sys.stdout,
+                      bar_format=bar_format):
             self.update_distances(cluster_centers=[idx])
             idx = self.get_new_idx()
             if idx in selected_idxs:
