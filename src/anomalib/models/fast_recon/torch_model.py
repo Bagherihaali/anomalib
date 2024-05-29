@@ -3,7 +3,6 @@ import torch
 from torchvision.models import Wide_ResNet50_2_Weights
 from torchvision.transforms import Resize
 from torch import Tensor, nn
-from torch.nn import functional as F
 from collections import OrderedDict
 
 from anomalib.models.components import DynamicBufferModule

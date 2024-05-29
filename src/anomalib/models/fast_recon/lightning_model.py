@@ -1,15 +1,5 @@
 import torch
-import numpy as np
-import cv2
-import os
 
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
-from torchvision.models import Wide_ResNet50_2_Weights
-from torch.nn import functional as F
-from sklearn.random_projection import SparseRandomProjection
-from scipy.ndimage import gaussian_filter
-
-# from anomalib.models.fast_recon.kcenter_greedy import KCenterGreedy
 from anomalib.models.components import KCenterGreedy
 from anomalib.models.components import AnomalyModule
 from anomalib.models.fast_recon.torch_model import FastReconModel, embedding_concat, pool_embeddings
