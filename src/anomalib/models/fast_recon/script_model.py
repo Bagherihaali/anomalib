@@ -105,7 +105,7 @@ class UNetForScript(nn.Module):
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
 
-        return enc1, enc4
+        return enc2, enc3
 
     @staticmethod
     def _block(in_channels, features, name):
@@ -148,7 +148,7 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
             feature_extractor: UNetForScript = None,
             lambda_value: int = 2,
             m=None,
-            maps_to_pool=None,
+            maps_to_pool=(0, 1),
             # s: int = 2
     ):
         super().__init__()
