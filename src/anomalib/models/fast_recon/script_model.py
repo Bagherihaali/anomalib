@@ -149,16 +149,16 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
             lambda_value: int = 2,
             m=None,
             maps_to_pool=(0, 1),
-            # s: int = 2
     ):
         super().__init__()
-        self.input_size = input_size
 
+        self.input_size = input_size
         self.lambda_value = lambda_value
         self.feature_extractor = feature_extractor
-        # self.s = s
         self.m = m
         self.maps_to_pool = maps_to_pool
+
+        self.features: list[Tensor] = [torch.tensor([])]
 
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
@@ -170,13 +170,13 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
 
     def forward(self, input_tensor: Tensor) -> Tensor:
         with torch.no_grad():
-            features = self.feature_extractor(input_tensor)
+            self.features = self.feature_extractor(input_tensor)
 
         sc = self.Sc
         mu = torch.t(self.mu)
 
         embeddings = []
-        for i, feature in enumerate(features):
+        for i, feature in enumerate(self.features):
             if i in self.maps_to_pool:
                 embeddings.append(self.m(feature))
             else:
