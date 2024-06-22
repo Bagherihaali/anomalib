@@ -1,4 +1,5 @@
 import torch
+import timm
 
 from torchvision.models import Wide_ResNet50_2_Weights
 from torchvision.transforms import Resize
@@ -144,8 +145,16 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
     def init_feature_extractor(self):
         if self.backbone == 'wide_resnet50':
-            self.feature_extractor = torch.hub.load('pytorch/vision:v0.9.0', 'wide_resnet50_2',
-                                                    weights=Wide_ResNet50_2_Weights.DEFAULT)
+
+            out_indices = [int(item.split('layer')[1]) for item in self.layers]
+            self.feature_extractor = timm.create_model(
+                'wide_resnet50_2',
+                pretrained=True,
+                features_only=True,
+                out_indices=out_indices,
+                exportable=True,
+            )
+            self.feature_extractor.to(self.mu.device)
         elif self.backbone == 'unet':
             self.feature_extractor = UNet(in_channels=3, out_channels=1, init_features=32)
             weights = torch.load(self.backbone_path, map_location=self.mu.device)
@@ -153,24 +162,26 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         def hook_t(module, input, output):
             self.features.append(output)
-
-        for layer_name in self.layers:
-            layer = getattr(self.feature_extractor, layer_name, None)
-            if layer is not None:
-                layer[-1].register_forward_hook(hook_t)
+        if isinstance(self.feature_extractor, UNet):
+            for layer_name in self.layers:
+                layer = getattr(self.feature_extractor, layer_name, None)
+                if layer is not None:
+                    layer[-1].register_forward_hook(hook_t)
 
     def forward(self, input_tensor: Tensor) -> Tensor:
         self.features = []
 
         self.feature_extractor.eval()
         with torch.no_grad():
-            self.feature_extractor(input_tensor)
-            features = self.features
+            if isinstance(self.feature_extractor, UNet):
+                self.feature_extractor(input_tensor)
+            else:
+                self.features = self.feature_extractor(input_tensor)
 
         if self.training:
-            output = features
+            output = self.features
         else:
-            output = self.anomaly_map_generator(input_tensor, features)
+            output = self.anomaly_map_generator(input_tensor, self.features)
 
         return output
 
@@ -178,9 +189,8 @@ class FastReconModel(DynamicBufferModule, nn.Module):
 
         sc = self.Sc
         mu = torch.t(self.mu)
-        features = self.features
 
-        embeddings = pool_embeddings(self.m, features, self.maps_to_pool)
+        embeddings = pool_embeddings(self.m, self.features, self.maps_to_pool)
 
         s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
         embedding_ = embedding_concat(embeddings[0], embeddings[1], s).to(self.Sc.device)
