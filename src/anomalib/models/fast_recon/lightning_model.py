@@ -14,8 +14,9 @@ class FastRecon(AnomalyModule):
                  coreset_sampling_ratio: int = 0.01,
                  lambda_value: int = 2,
                  backbone: str = 'wide_resnet50',
-                 m: torch.nn.AvgPool2d = torch.nn.AvgPool2d(4, 4),
+                 pool_args: tuple = (1, 1, 0),
                  maps_to_pool: tuple = (0, 1),
+                 distance_metric: str = 'cosine_similarity',
                  backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation'
                                       r'-pytorch_master\weights\unet.pt',
                  script_mode: bool = False
@@ -26,17 +27,28 @@ class FastRecon(AnomalyModule):
         self.backbone = backbone
         self.backbone_path = backbone_path
         self.lambda_value = lambda_value
-        self.m = m
+        self.pool_args = pool_args
         self.maps_to_pool = maps_to_pool
+        self.m = torch.nn.AvgPool2d(pool_args[0], pool_args[1], pool_args[2])
         self.script_mode = script_mode
+        self.distance_metric = distance_metric
 
         self.input_size = input_size
         self.coreset_sampling_ratio = coreset_sampling_ratio
 
         self.embedding_temp = []
 
-        self.model = FastReconModel(self.input_size, self.layers, self.backbone, self.lambda_value, self.m,
-                                    self.maps_to_pool, self.backbone_path)
+        self.model = FastReconModel(
+            input_size=self.input_size,
+            layers=self.layers,
+            backbone=self.backbone,
+            lambda_value=self.lambda_value,
+            m=self.m,
+            maps_to_pool=self.maps_to_pool,
+            backbone_path=self.backbone_path,
+            distance_metric=self.distance_metric,
+        )
+
         self.model.init_feature_extractor()
         self.model.feature_extractor.to(self.device)
 
