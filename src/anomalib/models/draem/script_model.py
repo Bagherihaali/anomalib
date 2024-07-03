@@ -89,9 +89,9 @@ class SSPCAB(nn.Module):
 class DraemModelScript(nn.Module):
     """DRAEM PyTorch model consisting of the reconstructive and discriminative sub networks."""
 
-    def __init__(self, sspcab: bool = False) -> None:
+    def __init__(self, enable_sspcab: bool = False) -> None:
         super().__init__()
-        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=sspcab)
+        self.reconstructive_subnetwork = ReconstructiveSubNetwork(in_channels=1, out_channels=1, sspcab=enable_sspcab)
         self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=2, out_channels=2)
 
     def forward(self, batch: Tensor):
