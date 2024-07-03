@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from typing import Optional
 
 from torchvision.models import Wide_ResNet50_2_Weights
 from torchvision.transforms import Resize, Normalize
@@ -105,7 +106,7 @@ class UNetForScript(nn.Module):
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
 
-        return enc2, enc3
+        return [enc2, enc3]
 
     @staticmethod
     def _block(in_channels, features, name):
@@ -147,8 +148,10 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
             input_size: tuple[int, int] = [1024, 1024],
             feature_extractor: UNetForScript = None,
             lambda_value: int = 2,
-            m=None,
+            m: Optional[torch.nn.AvgPool2d] = None,
+            distance_metric: str = 'cosine_similarity',
             maps_to_pool=(0, 1),
+            features: list[Tensor] = [torch.tensor([])]
     ):
         super().__init__()
 
@@ -157,8 +160,9 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
         self.feature_extractor = feature_extractor
         self.m = m
         self.maps_to_pool = maps_to_pool
+        self.distance_metric = distance_metric
 
-        self.features: list[Tensor] = [torch.tensor([])]
+        self.features = features
 
         self.register_buffer("Sc", Tensor())
         self.register_buffer("mu", Tensor())
@@ -198,18 +202,29 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
                                )
         q_hat_batch = torch.matmul(w_batch, sc)
 
-        score_patches_batch = torch.abs(q_batch - q_hat_batch)
-        score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
+        if self.distance_metric == 'cosine_similarity':
+            cosine_sim = F.cosine_similarity(q_batch, q_hat_batch, dim=2)
+            score_patches_temp_batch = 1 - torch.abs(cosine_sim)
+        else:
+            score_patches_batch = torch.abs(q_batch - q_hat_batch)
+            score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
+
         anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-2],
                                                              embedding_.shape[-1])
         anomaly_map_resized_batch = self.resize(anomaly_map_batch).unsqueeze(1)
 
-        min_values, _ = anomaly_map_resized_batch.min(dim=2, keepdim=True)
-        min_values, _ = min_values.min(dim=3, keepdim=True)
+        if self.distance_metric == 'cosine_similarity':
+            anomaly_map_resized_batch_normal = anomaly_map_resized_batch
 
-        max_values, _ = anomaly_map_resized_batch.max(dim=2, keepdim=True)
-        max_values, _ = max_values.max(dim=3, keepdim=True)
+        else:
+            min_values, _ = anomaly_map_resized_batch.min(dim=2, keepdim=True)
+            min_values, _ = min_values.min(dim=3, keepdim=True)
 
-        anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
+            max_values, _ = anomaly_map_resized_batch.max(dim=2, keepdim=True)
+            max_values, _ = max_values.max(dim=3, keepdim=True)
+
+            max_values = torch.tensor([70] * anomaly_map_resized_batch.shape[0]).to(self.Sc.device)
+
+            anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
 
         return anomaly_map_resized_batch_normal
