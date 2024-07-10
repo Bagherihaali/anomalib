@@ -127,7 +127,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             m: Optional[torch.nn.AvgPool2d] = None,
             maps_to_pool=None,
             distance_metric: str = 'cosine_similarity',
-            backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation-pytorch_master\weights\unet.pt'
+            backbone_path: str = None
     ):
         super().__init__()
         self.input_size = input_size
@@ -153,6 +153,7 @@ class FastReconModel(DynamicBufferModule, nn.Module):
             out_indices = [int(item.split('layer')[1]) for item in self.layers]
             self.feature_extractor = timm.create_model(
                 'wide_resnet50_2',
+                checkpoint_path=self.backbone_path,
                 pretrained=True,
                 features_only=True,
                 out_indices=out_indices,
