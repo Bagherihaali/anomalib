@@ -1,6 +1,7 @@
 import numpy as np
 import torch
-from typing import Optional
+import timm
+from typing import Optional, Union
 
 from torchvision.models import Wide_ResNet50_2_Weights
 from torchvision.transforms import Resize, Normalize
@@ -146,7 +147,7 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
     def __init__(
             self,
             input_size: tuple[int, int] = [1024, 1024],
-            feature_extractor: UNetForScript = None,
+            feature_extractor: Union[UNetForScript, timm.models.features.FeatureListNet] = None,
             lambda_value: int = 2,
             m: Optional[torch.nn.AvgPool2d] = None,
             distance_metric: str = 'cosine_similarity',
@@ -224,6 +225,108 @@ class FastReconModelScript(DynamicBufferModule, nn.Module):
             max_values, _ = max_values.max(dim=3, keepdim=True)
 
             max_values = torch.tensor([70] * anomaly_map_resized_batch.shape[0]).to(self.Sc.device)
+
+            anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
+
+        return anomaly_map_resized_batch_normal
+
+
+class FastReconScriptBackbone(DynamicBufferModule, nn.Module):
+    def __init__(
+            self,
+            feature_extractor: torch.jit._script.RecursiveScriptModule = None,
+            m: Optional[torch.nn.AvgPool2d] = None,
+            maps_to_pool=(0, 1),
+            features: list[Tensor] = [torch.tensor([])]
+
+    ):
+        super().__init__()
+
+        self.m = m
+        self.maps_to_pool = maps_to_pool
+        self.feature_extractor = feature_extractor
+        self.features = features
+
+    def forward(self, input_tensor: Tensor):
+        with torch.no_grad():
+            self.features = self.feature_extractor(input_tensor)
+
+        embeddings = []
+        for i, feature in enumerate(self.features):
+            if i in self.maps_to_pool:
+                embeddings.append(self.m(feature))
+            else:
+                embeddings.append(feature)
+
+        s = int(embeddings[0].shape[2] / embeddings[1].shape[2])
+        embedding_ = embedding_concat(embeddings[0], embeddings[1], s)
+        return embedding_
+
+
+class FastReconScriptLinearAlgebra(DynamicBufferModule, nn.Module):
+    def __init__(
+            self,
+            input_size: tuple[int, int] = [1024, 1024],
+            lambda_value: int = 2,
+
+            distance_metric: str = 'cosine_similarity',
+
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.lambda_value = lambda_value
+
+        self.distance_metric = distance_metric
+
+        self.register_buffer("Sc", Tensor())
+        self.register_buffer("mu", Tensor())
+
+        self.resize = Resize((self.input_size[0], self.input_size[1]))
+
+        self.Sc: Tensor
+        self.mu: Tensor
+
+    def forward(self, embedding_: Tensor) -> Tensor:
+
+        sc = self.Sc
+        mu = torch.t(self.mu)
+
+
+        total_embedding = embedding_.permute(0, 2, 3, 1).contiguous()
+
+        lamda = self.lambda_value
+        q_batch = total_embedding.view(total_embedding.shape[0], -1, embedding_.shape[1])
+
+        temp = torch.mm(sc, torch.t(sc)) + lamda * torch.mm(sc, torch.t(sc))
+        temp2_batch = torch.mm(mu, torch.t(sc)).unsqueeze(0).repeat(total_embedding.shape[0], 1, 1)
+        w_batch = torch.matmul((torch.matmul(q_batch, torch.t(sc)) + lamda * temp2_batch),
+                               torch.linalg.pinv(temp)
+                               )
+        q_hat_batch = torch.matmul(w_batch, sc)
+
+        if self.distance_metric == 'cosine_similarity':
+            cosine_sim = F.cosine_similarity(q_batch, q_hat_batch, dim=2)
+            score_patches_temp_batch = 1 - torch.abs(cosine_sim)
+        else:
+            score_patches_batch = torch.abs(q_batch - q_hat_batch)
+            score_patches_temp_batch = torch.norm(score_patches_batch, dim=2)
+
+        anomaly_map_batch = score_patches_temp_batch.reshape(total_embedding.shape[0], embedding_.shape[-2],
+                                                             embedding_.shape[-1])
+        anomaly_map_resized_batch = self.resize(anomaly_map_batch).unsqueeze(1)
+
+        if self.distance_metric == 'cosine_similarity':
+            anomaly_map_resized_batch_normal = anomaly_map_resized_batch
+
+        else:
+            min_values, _ = anomaly_map_resized_batch.min(dim=2, keepdim=True)
+            min_values, _ = min_values.min(dim=3, keepdim=True)
+
+            max_values, _ = anomaly_map_resized_batch.max(dim=2, keepdim=True)
+            max_values, _ = max_values.max(dim=3, keepdim=True)
+
+            max_values = torch.tensor([70] * anomaly_map_resized_batch.shape[0])
 
             anomaly_map_resized_batch_normal = (anomaly_map_resized_batch - min_values) / (max_values - min_values)
 
