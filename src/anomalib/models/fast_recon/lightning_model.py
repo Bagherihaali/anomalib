@@ -11,7 +11,7 @@ class FastRecon(AnomalyModule):
     def __init__(self,
                  layers: tuple[str, str] = ('layer1', 'layer2'),
                  input_size: tuple[int, int] = (256, 256),
-                 coreset_sampling_ratio: int = 0.01,
+                 coreset_sampling_ratio: float = 0.01,
                  lambda_value: int = 2,
                  backbone: str = 'wide_resnet50',
                  pool_args: tuple = (1, 1, 0),
