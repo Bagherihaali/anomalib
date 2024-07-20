@@ -17,8 +17,7 @@ class FastRecon(AnomalyModule):
                  pool_args: tuple = (1, 1, 0),
                  maps_to_pool: tuple = (0, 1),
                  distance_metric: str = 'cosine_similarity',
-                 backbone_path: str = r'C:\Users\Mohammad\.cache\torch\hub\mateuszbuda_brain-segmentation'
-                                      r'-pytorch_master\weights\unet.pt',
+                 backbone_path: str = None,
                  script_mode: bool = False
                  ):
         super(FastRecon, self).__init__()
